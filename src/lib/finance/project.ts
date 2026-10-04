@@ -1,6 +1,7 @@
 import type { FinanceSnapshot, FinanceTransaction } from "./types";
 import type { LedgerState, RecurringItem } from "./ledger-types";
 import { categories } from "./ledger-types";
+import { planForecast } from "./planning";
 import { expenseContribution } from "./history";
 
 export function perthDate(date = new Date()) {
@@ -18,18 +19,20 @@ export function previewRecurring(): RecurringItem[] {
 }
 
 export function applyLedger(snapshot: FinanceSnapshot, ledger: LedgerState): FinanceSnapshot {
-  const month = snapshot.mode === "preview" ? "2026-10" : perthDate().slice(0, 7);
-  const rules = Object.values(ledger.rules);
+  const reportDate = snapshot.mode === "preview" ? "2026-10-04" : perthDate();
+  const month = reportDate.slice(0, 7);
+  const plannedEvents = Object.values(ledger.events ?? {});
+  const rules = Object.values(ledger.rules).filter((rule) => rule.enabled !== false).sort((a,b) => Number(b.matchMode === "exact") - Number(a.matchMode === "exact") || b.match.length - a.match.length || a.match.localeCompare(b.match));
   const approved = new Map(Object.values(ledger.classifications ?? {}).filter((batch) => batch.active).flatMap((batch) => batch.transactionIds.map((id) => [id, batch.category] as const)));
   const recurringMap = new Map((snapshot.mode === "preview" ? previewRecurring() : []).map((item) => [item.id, item]));
   for (const item of Object.values(ledger.recurring)) recurringMap.set(item.id, item);
   const recurring = [...recurringMap.values()].filter((item) => item.active);
   const transactions = snapshot.transactions.map((transaction): FinanceTransaction => {
     const text = (transaction.merchantName ?? transaction.description).toLowerCase();
-    const rule = rules.find((item) => text.includes(item.match.toLowerCase()));
+    const rule = rules.find((item) => (item.matchMode === "exact" ? text === item.match.toLowerCase() : text.includes(item.match.toLowerCase())) && (!item.direction || (item.direction === "incoming" ? transaction.amount > 0 : transaction.amount < 0)));
     const correction = ledger.corrections[transaction.id];
     const classification = approved.get(transaction.id);
-    const resolved = { ...transaction, category: transaction.category === "Other" && !transaction.categorySource ? "Uncategorised" : transaction.category, ...(rule ? { category: rule.category, person: rule.person, isTransfer: rule.category === "Transfer" ? true : transaction.isTransfer } : {}), ...(classification ? { category: classification } : {}), ...correction };
+    const resolved = { ...transaction, category: transaction.category === "Other" && !transaction.categorySource ? "Uncategorised" : transaction.category, ...(rule ? { category: rule.category, ...(rule.applyPerson === false ? {} : { person: rule.person }), isTransfer: rule.category === "Transfer" ? true : transaction.isTransfer } : {}), ...(classification ? { category: classification } : {}), ...correction };
     return { ...resolved, categorySource: correction?.category || classification ? "manual" : rule ? "rule" : resolved.category === "Uncategorised" ? "unclassified" : "suggested", reviewReason: correction?.isTransfer !== undefined || rule?.category === "Transfer" ? undefined : transaction.reviewReason };
   });
   const baseBudgets = [...snapshot.budgets];
@@ -50,7 +53,7 @@ export function applyLedger(snapshot: FinanceSnapshot, ledger: LedgerState): Fin
   });
   const current = transactions.filter((item) => item.date.startsWith(month) && !item.isTransfer && item.currency.toLowerCase() === "aud");
   const income = current.filter((item) => item.category === "Income" && item.status === "posted").reduce((sum, item) => sum + item.amount, 0);
-  const spending = current.reduce((sum, item) => sum + expenseContribution(item), 0);
+  const spending = current.filter((item) => item.status === "posted").reduce((sum, item) => sum + expenseContribution(item), 0);
   const saved = income - spending;
   const plannedIncome = recurring.filter((item) => item.amount > 0).reduce((sum, item) => sum + item.amount, 0);
   const outflowByCategory = new Map<string, number>();
@@ -60,18 +63,15 @@ export function applyLedger(snapshot: FinanceSnapshot, ledger: LedgerState): Fin
   const expensePlan = [...outflowByCategory].map(([category, total]) => ({ category, total, budget: budgets.find((item) => item.name === category)?.limit ?? 0, recurring: -recurring.filter((item) => item.category === category && item.amount < 0).reduce((sum, item) => sum + item.amount, 0) }));
   const plannedSurplus = plannedIncome - plannedSpending;
   const netLiquid = snapshot.metrics.offsetBalance - snapshot.metrics.cardOwing;
-  const [year, monthNumber] = month.split("-").map(Number);
+
   return {
-    ...snapshot, transactions, budgets, recurring, month, plannedSurplus, plannedIncome, plannedSpending, expensePlan, forecastReady: plannedIncome > 0,
+    ...snapshot, transactions, budgets, recurring: [...recurringMap.values()], month, reportDate, plannedEvents, merchantRules: Object.entries(ledger.rules).map(([id, rule]) => ({ id, ...rule })), plannedSurplus, plannedIncome, plannedSpending, expensePlan, forecastReady: plannedIncome > 0,
     classificationBatches: Object.entries(ledger.classifications ?? {}).map(([id, batch]) => ({ id, ...batch })),
     budgetCategories, categoryNames: [...new Set([...categories, ...Object.values(ledger.categories ?? {}).map((item) => item.name)])],
     householdNames: ledger.household?.names ?? { stefan: "Stefan", partner: "Partner" },
-    forecast: Array.from({ length: 13 }, (_, index) => {
-      const date = new Date(Date.UTC(year, monthNumber - 1 + index, 1));
-      return { month: date.toISOString().slice(0, 7), label: new Intl.DateTimeFormat("en-AU", { month: "short", year: "2-digit", timeZone: "UTC" }).format(date), baseline: netLiquid + (plannedIncome > 0 ? plannedSurplus * index : 0) };
-    }),
+    forecast: planForecast({ month, asOf: reportDate, balance: netLiquid, surplus: plannedSurplus, months: 12, events: plannedEvents }),
     metrics: {
-      ...snapshot.metrics, netLiquid, incomeThisMonth: income, spentThisMonth: spending, savedThisMonth: saved,
+      ...snapshot.metrics, netLiquid, incomeThisMonth: income, spentThisMonth: spending, pendingThisMonth: -current.filter((item) => item.status === "pending" && item.amount < 0).reduce((sum,item) => sum + item.amount,0), savedThisMonth: saved,
       savingsRate: income > 0 ? saved / income : null,
       overallBudget: budgets.reduce((sum, item) => sum + item.limit, 0),
       overallBudgetSpent: budgets.reduce((sum, item) => sum + item.spent + item.pending, 0),

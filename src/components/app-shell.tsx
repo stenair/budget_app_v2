@@ -14,6 +14,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDateTime } from "@/lib/finance/format";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHousehold } from "@/components/household-context";
@@ -27,7 +28,7 @@ const nav = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function AppShell({ children, mode, connectionStatus, authEnabled }: { children: React.ReactNode; mode: "preview" | "live"; connectionStatus: string; authEnabled: boolean }) {
+export function AppShell({ children, mode, connectionStatus, authEnabled, checkedAt, connectionMessage }: { children: React.ReactNode; mode: "preview" | "live"; connectionStatus: string; authEnabled: boolean; checkedAt: string; connectionMessage: string }) {
   const pathname = usePathname();
   const { names } = useHousehold();
   const router = useRouter();
@@ -100,6 +101,7 @@ export function AppShell({ children, mode, connectionStatus, authEnabled }: { ch
               </Badge>
             </div>
             <div className="flex items-center gap-3">
+              <Link href="/settings" aria-label="Settings" className="grid size-11 place-items-center rounded-lg hover:bg-secondary lg:hidden"><Settings className="size-5" /></Link>
               {authEnabled ? <UserButton /> : null}
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -119,13 +121,15 @@ export function AppShell({ children, mode, connectionStatus, authEnabled }: { ch
         </header>
 
         <main className="mx-auto max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
+          <p className="mb-3 text-[11px] text-muted-foreground">{mode === "preview" ? "Sample household" : `Bank snapshot checked ${formatDateTime(checkedAt)}`} · <Link href="/settings" className="underline">Connection details</Link></p>
+          {connectionStatus === "error" ? <p role="status" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">{connectionMessage} <Link className="underline" href="/settings">Review connection</Link>.</p> : null}
           {children}
         </main>
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur lg:hidden" aria-label="Mobile navigation">
-        <div className="mx-auto grid max-w-lg grid-cols-6">
-          {nav.map((item) => {
+        <div className="mx-auto grid max-w-lg grid-cols-5">
+          {nav.filter((item) => item.href !== "/settings").map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
             return (

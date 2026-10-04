@@ -16,5 +16,5 @@ async function AuthorizedDashboard({ children }: { children: React.ReactNode }) 
     return <HouseholdLogin message={error.message} signIn={error.status === 401} canSignOut={error.status === 403 && authConfigured()} />;
   }
   const snapshot = await getFinanceSnapshot();
-  return <HouseholdProvider names={snapshot.householdNames ?? { stefan: "Stefan", partner: "Partner" }} categoryNames={snapshot.categoryNames ?? []}><AppShell mode={snapshot.mode} connectionStatus={snapshot.connection.status} authEnabled={authConfigured()}>{children}</AppShell></HouseholdProvider>;
+  return <HouseholdProvider names={snapshot.householdNames ?? { stefan: "Stefan", partner: "Partner" }} categoryNames={snapshot.categoryNames ?? []}><AppShell mode={snapshot.mode} connectionStatus={snapshot.connection.status} authEnabled={authConfigured()} checkedAt={snapshot.generatedAt} connectionMessage={snapshot.connection.message}>{children}</AppShell></HouseholdProvider>;
 }

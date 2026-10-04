@@ -3,7 +3,17 @@ import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { writeRecord, readRecords } from "../src/lib/finance/store";
+import { writeRecord, readRecords, patchRecord } from "../src/lib/finance/store";
+
+test("concurrent transaction edits retain independent fields and both audit entries", async () => {
+  const scope = `test-${randomUUID()}`;
+  await Promise.all([
+    patchRecord(scope, "edit:transaction:concurrent", { category: "Groceries" }, "first-device"),
+    patchRecord(scope, "edit:transaction:concurrent", { person: "Partner" }, "second-device"),
+  ]);
+  assert.deepEqual((await readRecords(scope, "edit:transaction:concurrent"))[0].value, { category: "Groceries", person: "Partner" });
+  assert.equal((await readRecords(scope, "audit:")).length, 2);
+});
 
 test("server records survive a read, remain encrypted, and are isolated by household scope", async () => {
   const scope = `test-${randomUUID()}`;

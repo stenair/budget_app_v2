@@ -19,5 +19,5 @@ export function expenseContribution(item: FinanceTransaction) {
   return -item.amount;
 }
 export function activityLink(filters: Record<string, string>) {
-  return `/activity?${new URLSearchParams(Object.entries(filters).filter(([, value]) => value && value !== "all"))}`;
+  return `/activity?${new URLSearchParams(Object.entries(filters).filter(([key, value]) => value && (value !== "all" || key === "month")))}`;
 }

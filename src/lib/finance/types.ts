@@ -1,4 +1,4 @@
-import type { RecurringItem, HouseholdNames } from "./ledger-types";
+import type { RecurringItem, HouseholdNames, PlannedEvent, MerchantRule } from "./ledger-types";
 
 export type Money = {
   amount: number;
@@ -55,6 +55,9 @@ export type ForecastPoint = {
 
 export type FinanceSnapshot = {
   classificationBatches?: Array<{ id: string; category: string; transactionIds: string[]; active: boolean }>;
+  reportDate?: string;
+  plannedEvents?: PlannedEvent[];
+  merchantRules?: Array<MerchantRule & { id: string }>;
   categoryNames?: string[];
   budgetCategories?: Array<{ id: string; name: string; hidden: boolean }>;
   householdNames?: HouseholdNames;
@@ -85,6 +88,7 @@ export type FinanceSnapshot = {
     netLiquid: number;
     incomeThisMonth: number;
     spentThisMonth: number;
+    pendingThisMonth?: number;
     savedThisMonth: number;
     savingsRate: number | null;
     overallBudget: number;

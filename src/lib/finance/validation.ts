@@ -24,8 +24,11 @@ export function validateMutation(body: unknown, customCategories: string[] = [])
       if (!Number.isInteger(stefan) || !Number.isInteger(partner) || (stefan as number) < 0 || (partner as number) < 0 || (stefan as number) + (partner as number) !== 100) return fail();
     }
   } else if (kind === "rule") {
-    if (Object.keys(v).some((key) => !["match", "category", "person"].includes(key))) return fail();
+    if (Object.keys(v).some((key) => !["match", "category", "person", "enabled", "matchMode", "applyPerson", "direction"].includes(key))) return fail();
     if (typeof v.match !== "string" || v.match.trim().length < 3 || v.match.length > 120 || !validCategory(v.category) || !validPerson(v.person)) return fail();
+    if (v.enabled !== undefined && typeof v.enabled !== "boolean" || v.applyPerson !== undefined && typeof v.applyPerson !== "boolean" || v.matchMode !== undefined && !["exact", "contains"].includes(v.matchMode as string) || v.direction !== undefined && !["incoming", "outgoing"].includes(v.direction as string)) return fail();
+  } else if (kind === "event") {
+    if (Object.keys(v).some((key) => !["id", "name", "date", "amount", "category", "active"].includes(key)) || v.id !== id || typeof v.name !== "string" || !v.name.trim() || v.name.length > 80 || typeof v.date !== "string" || !/^20[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(v.date) || !Number.isFinite(Date.parse(v.date)) || new Date(v.date).toISOString().slice(0,10) !== v.date || !money(v.amount) || v.amount === 0 || !validCategory(v.category) || v.category === "Transfer" || typeof v.active !== "boolean" || (v.amount as number) > 0 && v.category !== "Income" || (v.amount as number) < 0 && v.category === "Income") return fail();
   } else if (kind === "recurring") {
     if (Object.keys(v).some((key) => !["id", "name", "category", "amount", "day", "person", "active"].includes(key))) return fail();
     if (v.id !== id || typeof v.name !== "string" || !v.name.trim() || v.name.length > 80 || !validCategory(v.category) || !validPerson(v.person) || !money(v.amount) || v.amount === 0 || !Number.isInteger(v.day) || (v.day as number) < 1 || (v.day as number) > 31 || typeof v.active !== "boolean") return fail();

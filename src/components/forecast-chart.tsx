@@ -23,7 +23,7 @@ export function ForecastChart({ points, comparison }: { points: Array<ForecastPo
   const gap = `${line("baseline")} ${coords.toReversed().map((point) => `L${point.x},${point.scenario}`).join(" ")} Z`;
   const delta = (selected?.value ?? 0) - (selected?.baseline ?? 0);
   return <div className="rounded-xl bg-secondary/45 p-3">
-    <div className="mb-3 flex flex-wrap gap-4 text-xs"><span className="flex items-center gap-2"><i className="h-0.5 w-5 bg-emerald-700" />Baseline · sliders at zero</span>{comparison ? <span className="flex items-center gap-2"><i className="h-0.5 w-5 bg-blue-600" />Your scenario · shaded gap is the difference</span> : null}</div>
+    <div className="mb-3 flex flex-wrap gap-4 text-xs"><span className="flex items-center gap-2"><i className="h-0.5 w-5 bg-emerald-700" />Saved plan · sliders at zero</span>{comparison ? <span className="flex items-center gap-2"><i className="h-0.5 w-5 bg-blue-600" />Your scenario · shaded gap is the difference</span> : null}</div>
     <div className="overflow-x-auto">
       <svg viewBox={`0 0 ${width} ${height}`} className="h-52 w-full sm:h-64" style={{ minWidth: Math.max(320, points.length * 32) }} role="group" aria-label={`Monthly net liquid forecast from ${points[0]?.label} to ${points.at(-1)?.label}`}>
         {[0, 0.5, 1].map((fraction) => <g key={fraction}><line x1={pad} x2={width - pad} y1={pad + fraction * (height - pad * 2)} y2={pad + fraction * (height - pad * 2)} stroke="var(--border)" strokeDasharray="4 6" /><text x={pad} y={pad + fraction * (height - pad * 2) - 4} fontSize="10" fill="var(--muted-foreground)">{formatMoney(max - fraction * (max - min), { compact: true })}</text></g>)}

@@ -6,6 +6,7 @@ import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/finance/format";
 import { getFinanceSnapshot } from "@/lib/finance/redbark";
+import { RuleManager } from "@/components/rule-manager";
 import { HouseholdSettings } from "@/components/household-settings";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,8 @@ export default async function SettingsPage() {
       />
 
       <div className="mb-4"><HouseholdSettings /></div>
-      <section className="grid gap-4 lg:grid-cols-2">
+      <RuleManager rules={data.merchantRules ?? []} />
+      <section className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card className="shadow-xs">
           <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Landmark className="size-4 text-primary" /> Bank connection</CardTitle></CardHeader>
           <CardContent className="space-y-4">
@@ -35,7 +37,7 @@ export default async function SettingsPage() {
             <Separator />
             <SettingRow label="Redbark API v2" value={redbarkConfigured ? "Server key configured" : "Add REDBARK_API_KEY"} ready={redbarkConfigured} />
             <Separator />
-            <SettingRow label="Data status" value={data.mode === "live" ? "Balances and transactions active" : "Using private preview dataset"} ready={data.mode === "live"} />
+            <SettingRow label="Data status" value={data.mode === "live" ? data.connection.status === "active" ? "Latest bank snapshot available" : data.connection.message : "Using private preview dataset"} ready={data.mode === "live"} />
             <Separator />
             <SettingRow label="Consent expires" value={data.connection.consentExpiresAt ? formatDateTime(data.connection.consentExpiresAt) : "Not supplied in preview"} ready={Boolean(data.connection.consentExpiresAt)} />
             <Separator />

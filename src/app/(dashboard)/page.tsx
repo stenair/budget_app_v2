@@ -1,261 +1,45 @@
 import Link from "next/link";
-import {
-  ArrowDownRight,
-  ArrowRight,
-  ArrowUpRight,
-  CalendarClock,
-  CircleAlert,
-  CreditCard,
-  Landmark,
-  PiggyBank,
-  Sparkles,
-  Wallet,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ArrowRight, CircleAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { CategoryIcon } from "@/components/category-icon";
-import { MiniChart } from "@/components/mini-chart";
 import { RefreshButton } from "@/components/refresh-button";
 import { formatDateTime, formatMoney, formatShortDate } from "@/lib/finance/format";
 import { getFinanceSnapshot } from "@/lib/finance/redbark";
+import { activityLink, monthlyHistory, monthLabel } from "@/lib/finance/history";
+import { reviewSummary, upcomingPlan } from "@/lib/finance/planning";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const data = await getFinanceSnapshot();
-  const today = new Intl.DateTimeFormat("en-AU", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    timeZone: "Australia/Perth",
-  }).format(new Date());
-  const monthName = new Intl.DateTimeFormat("en-AU", {
-    month: "long",
-    timeZone: "Australia/Perth",
-  }).format(new Date());
-  const budgetPercent = data.metrics.overallBudget
-    ? Math.round((data.metrics.overallBudgetSpent / data.metrics.overallBudget) * 100)
-    : 0;
-  const recent = data.transactions.filter((item) => !item.isTransfer).slice(0, 5);
+  const month = data.month ?? "";
+  const asOf = data.reportDate ?? "";
+  const current = data.transactions.filter((item) => item.date.startsWith(month));
+  const review = reviewSummary(current);
+  const upcoming = upcomingPlan(data.recurring ?? [], data.plannedEvents ?? [], asOf);
+  const scheduledOutflows = -upcoming.filter((item) => item.amount < 0).reduce((sum,item) => sum + item.amount,0);
   const remaining = data.metrics.overallBudget - data.metrics.overallBudgetSpent;
-  const day = Number((data.month === "2026-10" && data.mode === "preview" ? "2026-10-04" : new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Perth", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())).slice(-2));
-  const upcoming = (data.recurring ?? []).filter((item) => item.amount < 0 && item.day > day).sort((a, b) => a.day - b.day).slice(0, 3);
-
-  return (
-    <div>
-      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-sm text-muted-foreground">{today}</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">Your household at a glance</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">Here&apos;s where your household stands today.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="h-8 gap-2 rounded-full bg-card px-3 font-normal">
-            <span className={data.mode === "live" ? "size-2 rounded-full bg-emerald-500" : "size-2 rounded-full bg-amber-500"} />
-            {data.mode === "live" ? "Live data" : "Preview data"}
-          </Badge>
-          <RefreshButton />
-        </div>
-      </div>
-
-      {data.mode === "preview" ? (
-        <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-700" />
-          <div>
-            <span className="font-medium">Preview mode.</span> You&apos;re exploring a sample household. Your live connection can be configured in Settings.
-          </div>
-        </div>
-      ) : null}
-      {data.connection.status === "error" ? <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">{data.connection.message}</p> : null}
-
-      <section className="grid gap-4 lg:grid-cols-[1.35fr_1fr]" aria-label="Current position">
-        <Card className="overflow-hidden border-primary/15 bg-primary text-primary-foreground shadow-sm">
-          <CardContent className="p-6 sm:p-7">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-primary-foreground/70">Net liquid position</p>
-                <p className="mt-2 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">
-                  {formatMoney(data.metrics.netLiquid)}
-                </p>
-                <p className="mt-2 flex items-center gap-1.5 text-sm text-primary-foreground/75">
-                  <ArrowUpRight className="size-4" />
-                  {formatMoney(data.metrics.savedThisMonth, { showSign: true })} this month
-                </p>
-              </div>
-              {data.mode === "preview" ? <MiniChart values={[51, 53, 52, 57, 60, 62, 66]} color="#d8ebdf" /> : null}
-            </div>
-            <div className="mt-8 grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-white/10 p-4">
-                <div className="flex items-center gap-2 text-xs text-primary-foreground/65"><Wallet className="size-3.5" /> Offset balance</div>
-                <p className="mt-2 text-lg font-semibold">{formatMoney(data.metrics.offsetBalance)}</p>
-              </div>
-              <div className="rounded-xl bg-white/10 p-4">
-                <div className="flex items-center gap-2 text-xs text-primary-foreground/65"><CreditCard className="size-3.5" /> Card owing</div>
-                <p className="mt-2 text-lg font-semibold">{formatMoney(data.metrics.cardOwing)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-xs">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{monthName} cash flow</CardTitle>
-              <Badge variant="secondary" className="font-normal">{day} days in</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><ArrowDownRight className="size-3.5 text-emerald-600" /> Income</p>
-                <p className="mt-1 text-xl font-semibold">{formatMoney(data.metrics.incomeThisMonth, { compact: true })}</p>
-              </div>
-              <div>
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><ArrowUpRight className="size-3.5 text-orange-600" /> Spending</p>
-                <p className="mt-1 text-xl font-semibold">{formatMoney(data.metrics.spentThisMonth, { compact: true })}</p>
-              </div>
-            </div>
-            <div className="rounded-xl bg-secondary/70 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Saved so far</span>
-                <span className="text-sm font-semibold text-primary">{formatMoney(data.metrics.savedThisMonth)}</span>
-              </div>
-              <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                <span>Savings rate</span>
-                <span>{data.metrics.savingsRate === null ? "—" : `${Math.round(data.metrics.savingsRate * 100)}%`}</span>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">Internal transfers and card repayments are excluded.</p>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="At a glance">
-        <MetricCard label="Income" value={formatMoney(data.metrics.incomeThisMonth, { compact: true })} detail="this month" icon={<ArrowDownRight />} tone="green" />
-        <MetricCard label="Spent" value={formatMoney(data.metrics.spentThisMonth, { compact: true })} detail="this month" icon={<ArrowUpRight />} tone="orange" />
-        <MetricCard label="Budget left" value={formatMoney(remaining, { compact: true })} detail={`${budgetPercent}% used`} icon={<PiggyBank />} tone="blue" />
-        <MetricCard label="3-month outlook" value={data.forecastReady ? formatMoney(data.forecast[3]?.baseline ?? data.metrics.netLiquid, { compact: true }) : "Set plan"} detail="net liquid" icon={<Sparkles />} tone="purple" />
-      </section>
-
-      <section className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
-        <Card className="shadow-xs">
-          <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
-            <div>
-              <CardTitle className="text-base">Budget pulse</CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">{formatMoney(remaining)} remaining across tracked categories</p>
-            </div>
-            <Button asChild variant="ghost" size="sm" className="gap-1 text-primary">
-              <Link href="/budgets">View all <ArrowRight className="size-3.5" /></Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {data.budgets.slice(0, 4).map((budget) => {
-              const used = budget.limit ? Math.round(((budget.spent + budget.pending) / budget.limit) * 100) : 0;
-              return (
-                <div key={budget.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3">
-                  <CategoryIcon name={budget.icon} color={budget.color} />
-                  <div className="min-w-0">
-                    <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
-                      <span className="truncate font-medium">{budget.name}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{formatMoney(budget.spent + budget.pending)} of {formatMoney(budget.limit)}</span>
-                    </div>
-                    <Progress value={Math.min(used, 100)} className="h-1.5" />
-                  </div>
-                  <span className="w-9 text-right text-xs font-medium">{used}%</span>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-xs">
-          <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-            <div>
-              <CardTitle className="text-base">Recent activity</CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">Latest household transactions</p>
-            </div>
-            <Button asChild variant="ghost" size="sm" className="gap-1 text-primary">
-              <Link href="/activity">View all <ArrowRight className="size-3.5" /></Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="divide-y px-5 pb-2">
-            {recent.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 py-3">
-                <CategoryIcon name={categoryIcon(item.category)} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{item.merchantName ?? item.description}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{item.category} · {formatShortDate(item.date)}</p>
-                </div>
-                <div className="text-right">
-                  <p className={item.amount > 0 ? "text-sm font-semibold text-emerald-700" : "text-sm font-semibold"}>{formatMoney(item.amount)}</p>
-                  {item.status === "pending" ? <span className="text-[10px] text-amber-700">Pending</span> : null}
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="mt-4 grid gap-4 lg:grid-cols-3">
-        <Card className="shadow-xs lg:col-span-2">
-          <CardHeader className="pb-3"><CardTitle className="text-base">Upcoming</CardTitle></CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-3">
-            {upcoming.map((item) => <Upcoming key={item.id} icon={item.category === "Mortgage" ? <Landmark /> : <CalendarClock />} date={`Day ${item.day}`} label={item.name} amount={formatMoney(-item.amount)} />)}
-            {!upcoming.length ? <p className="text-sm text-muted-foreground">No remaining scheduled bills this month. <Link className="text-primary underline" href="/forecast">Manage schedule</Link></p> : null}
-          </CardContent>
-        </Card>
-        <Card className="border-primary/15 bg-secondary/60 shadow-xs">
-          <CardContent className="p-5">
-            <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="size-4 text-primary" /> One useful insight</div>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">{data.forecastReady ? <>Your current monthly plan has a surplus of <span className="font-semibold text-foreground">{formatMoney(data.plannedSurplus ?? 0)}</span>. Compare it with your actual spending as the month progresses.</> : <>Add expected salaries and recurring bills in Forecast to see what your monthly budget could save.</>}</p>
-          </CardContent>
-        </Card>
-      </section>
-
-      <p className="mt-5 text-center text-[11px] text-muted-foreground">{data.connection.message} · Checked {formatDateTime(data.generatedAt)}</p>
-    </div>
-  );
+  const activeBudgets = data.budgets.filter((item) => item.limit > 0 || item.spent > 0 || item.pending > 0).sort((a,b) => Number(b.spent + b.pending > b.limit) - Number(a.spent + a.pending > a.limit) || (b.limit ? (b.spent+b.pending)/b.limit : 0) - (a.limit ? (a.spent+a.pending)/a.limit : 0));
+  const recent = data.transactions.filter((item) => !item.isTransfer).slice(0,5);
+  const history = monthlyHistory(data.transactions,month);
+  const prior = history.filter((row) => !row.current && row.month > history[0]?.month && row.count > 0);
+  const averageSurplus = prior.length ? Math.round(prior.reduce((sum,item) => sum + item.surplus,0)/prior.length) : null;
+  return <div>
+    <div className="mb-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-muted-foreground">{monthLabel(month)} · household overview</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">Where you stand today</h1><p className="mt-1 text-sm text-muted-foreground">Your money, commitments and next decisions in one place.</p></div><RefreshButton /></div>
+    {data.mode === "preview" ? <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">Preview household · all amounts below are sample data.</p> : null}
+    <section className="grid gap-4 lg:grid-cols-2" aria-label="Current financial position">
+      <Card className="bg-primary text-primary-foreground"><CardContent className="p-6"><p className="text-sm opacity-80">Net liquid funds</p><p className="mt-2 text-4xl font-semibold tracking-tight">{formatMoney(data.metrics.netLiquid)}</p><p className="mt-2 text-xs opacity-80">Offset balance minus card owing. This is your current position, not a forecast.</p><div className="mt-6 grid grid-cols-2 gap-3"><Link href={activityLink({account:data.accounts.find((item) => item.type === "transaction")?.id ?? ""})} className="rounded-xl bg-white/10 p-3"><p className="text-xs opacity-80">Offset balance →</p><p className="mt-1 text-lg font-semibold">{formatMoney(data.metrics.offsetBalance)}</p></Link><Link href={activityLink({account:data.accounts.find((item) => item.type === "credit-card")?.id ?? ""})} className="rounded-xl bg-white/10 p-3"><p className="text-xs opacity-80">{data.metrics.cardOwing < 0 ? "Card credit" : "Card owing"} →</p><p className="mt-1 text-lg font-semibold">{formatMoney(Math.abs(data.metrics.cardOwing))}</p></Link></div></CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-base">This month’s cash flow</CardTitle><p className="text-xs text-muted-foreground">Posted transactions only; card repayments and internal transfers excluded.</p></CardHeader><CardContent><div className="grid grid-cols-2 gap-4"><Link className="rounded-lg bg-secondary p-3" href={activityLink({month,flow:"income",status:"posted"})}><p className="text-xs text-muted-foreground">Income →</p><p className="mt-1 text-xl font-semibold text-emerald-700">{formatMoney(data.metrics.incomeThisMonth)}</p></Link><Link className="rounded-lg bg-secondary p-3" href={activityLink({month,flow:"spending",status:"posted"})}><p className="text-xs text-muted-foreground">Expenses after refunds →</p><p className="mt-1 text-xl font-semibold">{formatMoney(data.metrics.spentThisMonth)}</p></Link></div><Link href="/insights" className="mt-4 block rounded-lg border p-3"><div className="flex justify-between gap-3 text-sm"><span>Recorded surplus →</span><strong>{formatMoney(data.metrics.savedThisMonth,{showSign:true})}</strong></div><p className="mt-2 text-xs text-muted-foreground">Income minus posted expenses. This is not the measured change in your offset balance.{data.metrics.savingsRate !== null ? ` Surplus rate: ${Math.round(data.metrics.savingsRate * 100)}%.` : ""}</p></Link><p className="mt-3 text-xs text-muted-foreground">{formatMoney(data.metrics.pendingThisMonth ?? 0)} pending purchases count in budgets, but not posted cash flow.{review.unknownCredits ? ` ${formatMoney(review.unknownCredits)} incoming needs classification and is excluded from surplus.` : ""}</p></CardContent></Card>
+    </section>
+    {review.unclassifiedCount || review.unknownCredits || review.transferReview ? <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><CircleAlert className="mt-0.5 size-4 shrink-0" /><div><p className="text-sm font-semibold">Make your reports more useful</p><p className="mt-1 text-xs leading-5">{review.unclassifiedCount} uncategorised {review.unclassifiedCount === 1 ? "purchase" : "purchases"} ({formatMoney(review.unknownSpend)}).{review.unknownCredits ? ` ${formatMoney(review.unknownCredits)} incoming money needs review.` : ""}{review.transferReview ? ` ${review.transferReview} possible transfers need checking.` : ""}</p><div className="mt-2 flex flex-wrap gap-4 text-xs"><Link href={activityLink({month:"all",review:"category"})} className="underline">Review categories →</Link>{review.transferReview ? <Link href={activityLink({review:"transfer",month:"all"})} className="underline">Check transfers →</Link> : null}</div></div></div> : null}
+    <section className="mt-4 grid gap-4 sm:grid-cols-3" aria-label="Plan and outlook"><Summary href="/budgets" title={remaining >= 0 ? "Budget remaining" : "Over household budget"} value={formatMoney(Math.abs(remaining))} detail="Includes posted and pending purchases" /><Summary href="/forecast" title="Planned monthly surplus" value={formatMoney(data.plannedSurplus ?? 0,{showSign:true})} detail="From recurring income, bills and budget targets" /><Summary href="/insights" title="Prior monthly surplus average" value={averageSurplus === null ? "More history needed" : formatMoney(averageSurplus)} detail={`${prior.length} prior imported months; excludes first and current month`} /></section>
+    <section className="mt-4 grid gap-4 lg:grid-cols-2">
+      <Card><CardHeader className="flex-row justify-between gap-2"><div><CardTitle className="text-base">Budgets needing attention</CardTitle><p className="mt-1 text-xs text-muted-foreground">Highest usage first. Current monthly targets.</p></div><Button asChild variant="ghost" size="sm"><Link href="/budgets">All budgets <ArrowRight className="ml-1 size-3" /></Link></Button></CardHeader><CardContent className="space-y-4">{activeBudgets.slice(0,4).map((budget) => { const used=budget.spent+budget.pending; return <Link key={budget.id} href={activityLink({month,category:budget.name,flow:"spending"})} className="block rounded-lg p-2 hover:bg-secondary"><div className="flex justify-between gap-3 text-sm"><span className="font-medium">{budget.name} →</span><span className={used > budget.limit ? "text-orange-700" : "text-muted-foreground"}>{budget.limit ? `${formatMoney(budget.limit-used)} left` : `${formatMoney(used)} · no target`}</span></div><Progress className="mt-2 h-2" value={budget.limit ? Math.min(100,Math.max(0,used/budget.limit*100)) : used > 0 ? 100 : 0} /><p className="mt-1 text-xs text-muted-foreground">{formatMoney(used)} of {formatMoney(budget.limit)}</p></Link>; })}</CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-base">Next 30 days: scheduled movements</CardTitle><p className="text-xs text-muted-foreground">From tomorrow, based on your monthly schedule and known one-offs. These are expectations, not bank-confirmed bills.</p></CardHeader><CardContent><div className="divide-y">{upcoming.slice(0,6).map((item) => <Link href="/forecast" className="flex justify-between gap-3 py-3 text-sm" key={item.id}><div className="min-w-0"><p className="truncate font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{formatShortDate(item.date)}{item.oneOff ? " · one-off" : ""}</p></div><strong className={item.amount > 0 ? "text-emerald-700" : ""}>{formatMoney(item.amount)}</strong></Link>)}</div>{!upcoming.length ? <Link href="/forecast" className="text-sm text-primary underline">Add your income and bill schedule →</Link> : null}<div className="mt-3 rounded-lg bg-secondary p-3 text-xs"><p>Scheduled outflows: <strong>{formatMoney(scheduledOutflows)}</strong></p><p className="mt-1">Net funds after these outflows: <strong>{formatMoney(data.metrics.netLiquid-scheduledOutflows)}</strong></p><p className="mt-2 text-muted-foreground">Illustration before future income or other spending. Scheduled items may already have been paid early; this is not an available-to-spend balance.</p></div></CardContent></Card>
+    </section>
+    <section className="mt-4 grid gap-4 lg:grid-cols-2"><Card><CardHeader><CardTitle className="text-base">Where your plan could take you</CardTitle></CardHeader><CardContent><div className="grid grid-cols-3 gap-2">{[3,6,12].map((count) => <Link key={count} href="/forecast" className="rounded-lg bg-secondary p-3"><p className="text-xs text-muted-foreground">{count} months →</p><p className="mt-1 break-words text-sm font-semibold">{formatMoney(data.forecast[count]?.baseline ?? data.metrics.netLiquid)}</p></Link>)}</div><p className="mt-3 text-xs text-muted-foreground">Net liquid estimate from your plan, including known future one-offs. {data.forecastReady ? "" : "No expected income is set; planned spending still reduces the forecast."}</p></CardContent></Card><Card><CardHeader className="flex-row justify-between"><CardTitle className="text-base">Recent activity</CardTitle><Link href="/activity" className="text-xs text-primary underline">View all</Link></CardHeader><CardContent className="divide-y">{recent.map((item) => <Link key={item.id} className="flex justify-between gap-3 py-2 text-sm" href={activityLink({month:item.date.slice(0,7),search:item.merchantName ?? item.description})}><div className="min-w-0"><p className="truncate font-medium">{item.merchantName ?? item.description}</p><p className="text-xs text-muted-foreground">{formatShortDate(item.date)} · {item.category}{item.status === "pending" ? " · pending" : ""}</p></div><strong className="shrink-0">{formatMoney(item.amount)}</strong></Link>)}</CardContent></Card></section>
+    <p className="mt-5 text-center text-[11px] text-muted-foreground">Bank snapshot checked {formatDateTime(data.generatedAt)}. Feed updates depend on NAB and Redbark. <Link href="/settings" className="underline">Check account observation times</Link>.</p>
+  </div>;
 }
-
-function MetricCard({ label, value, detail, icon, tone }: { label: string; value: string; detail: string; icon: React.ReactNode; tone: "green" | "orange" | "blue" | "purple" }) {
-  const tones = {
-    green: "bg-emerald-50 text-emerald-700",
-    orange: "bg-orange-50 text-orange-700",
-    blue: "bg-blue-50 text-blue-700",
-    purple: "bg-purple-50 text-purple-700",
-  };
-  return (
-    <Card className="shadow-xs">
-      <CardContent className="p-4 sm:p-5">
-        <span className={`mb-3 grid size-8 place-items-center rounded-lg [&>svg]:size-4 ${tones[tone]}`}>{icon}</span>
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="mt-1 text-xl font-semibold tracking-tight">{value}</p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">{detail}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Upcoming({ icon, date, label, amount }: { icon: React.ReactNode; date: string; label: string; amount: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border bg-background p-3">
-      <span className="grid size-9 place-items-center rounded-lg bg-secondary text-primary [&>svg]:size-4">{icon}</span>
-      <div className="min-w-0 flex-1"><p className="text-xs text-muted-foreground">{date}</p><p className="truncate text-sm font-medium">{label}</p></div>
-      <span className="text-xs font-semibold">{amount}</span>
-    </div>
-  );
-}
-
-function categoryIcon(category: string) {
-  const mapping: Record<string, string> = {
-    Groceries: "basket",
-    "Eating out": "utensils",
-    Transport: "car",
-    Health: "health",
-    Mortgage: "mortgage",
-    Transfer: "transfer",
-  };
-  return mapping[category] ?? "other";
-}
+function Summary({href,title,value,detail}:{href:string;title:string;value:string;detail:string}) { return <Link className="rounded-xl focus-visible:outline-2" href={href}><Card className="h-full hover:bg-secondary"><CardContent className="p-4"><p className="text-xs text-muted-foreground">{title} →</p><p className="mt-1 text-xl font-semibold">{value}</p><p className="mt-2 text-xs text-muted-foreground">{detail}</p></CardContent></Card></Link>; }

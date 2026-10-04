@@ -123,3 +123,38 @@ export async function writeRecord(scope: string, key: string, value: unknown, ac
     }
   }
 }
+
+// Merge independent edits under one transaction so two household devices cannot
+// overwrite each other's category/person changes after reading the same record.
+const localPatches = new Map<string, Promise<void>>();
+export async function patchRecord(scope: string, key: string, patch: Record<string, unknown>, actor: string) {
+  const db = await database();
+  if (!db) {
+    const lock = `${scope}:${key}`;
+    const previous = localPatches.get(lock) ?? Promise.resolve();
+    const work = previous.catch(() => {}).then(async () => {
+      const records = await readRecords<Record<string, unknown>>(scope, key);
+      const current = records.find((row) => row.key === key)?.value ?? {};
+      await writeRecord(scope, key, { ...current, ...patch }, actor);
+    });
+    localPatches.set(lock, work);
+    try { await work; } finally { if (localPatches.get(lock) === work) localPatches.delete(lock); }
+    return;
+  }
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SET LOCAL lock_timeout = '5s'");
+    // Transaction-scoped lock also covers the first insert when no row exists.
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`${scope}:${key}`]);
+    const result = await client.query("SELECT payload FROM harbour_records WHERE scope=$1 AND key=$2 FOR UPDATE", [scope, key]);
+    const current = result.rows[0] ? await decode<Record<string, unknown>>(scope, key, result.rows[0].payload) : {};
+    const value = { ...current, ...patch };
+    const payload = await encode(scope, key, value);
+    const auditKey = `audit:${new Date().toISOString()}:${randomUUID()}`;
+    const auditPayload = await encode(scope, auditKey, { key, actor, at: new Date().toISOString(), value });
+    await client.query("INSERT INTO harbour_records(scope,key,payload) VALUES($1,$2,$3) ON CONFLICT(scope,key) DO UPDATE SET payload=excluded.payload, updated_at=now()", [scope, key, payload]);
+    await client.query("INSERT INTO harbour_records(scope,key,payload) VALUES($1,$2,$3)", [scope, auditKey, auditPayload]);
+    await client.query("COMMIT");
+  } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+}

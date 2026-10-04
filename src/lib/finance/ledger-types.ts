@@ -5,7 +5,8 @@ export const people: Person[] = ["Stefan", "Partner", "Shared", "Unknown"];
 
 export type TransactionCorrection = { category?: string; person?: Person; isTransfer?: boolean };
 export type BudgetPlan = { limit: number; allocation: { stefan: number; partner: number } | null };
-export type MerchantRule = { match: string; category: string; person: Person };
+export type MerchantRule = { match: string; category: string; person: Person; enabled?: boolean; matchMode?: "exact" | "contains"; applyPerson?: boolean; direction?: "incoming" | "outgoing" };
+export type PlannedEvent = { id: string; name: string; date: string; amount: number; category: string; active: boolean };
 export type RecurringItem = { id: string; name: string; category: string; amount: number; day: number; person: Person; active: boolean };
 export type CategoryDefinition = { name: string; hidden: boolean };
 export type HouseholdNames = { stefan: string; partner: string };
@@ -17,6 +18,7 @@ export type LedgerState = {
   recurring: Record<string, RecurringItem>;
   categories?: Record<string, CategoryDefinition>;
   household?: Record<string, HouseholdNames>;
+  events?: Record<string, PlannedEvent>;
   classifications?: Record<string, ClassificationBatch>;
 };
 
@@ -27,4 +29,5 @@ export type LedgerMutation =
   | { kind: "recurring"; id: string; value: RecurringItem }
   | { kind: "category"; id: string; value: CategoryDefinition }
   | { kind: "household"; id: string; value: HouseholdNames }
+  | { kind: "event"; id: string; value: PlannedEvent }
   | { kind: "classification"; id: string; value: ClassificationBatch };
