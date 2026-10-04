@@ -6,6 +6,35 @@ import { applyLedger } from "../src/lib/finance/project";
 import { validateMutation } from "../src/lib/finance/validation";
 import type { LedgerState } from "../src/lib/finance/ledger-types";
 
+test("unknown credits cannot hide expenses or become assumed income", () => {
+  const source = getDemoSnapshot();
+  const base = source.transactions[0];
+  source.transactions = [{ ...base, amount: -2293 }, { ...base, id: "unknown-credit", amount: 4000, category: "Other" }];
+  const projected = applyLedger(source, { corrections: {}, budgets: {}, rules: {}, recurring: {} });
+  const month = monthlyHistory(projected.transactions, "2026-10")[0];
+  assert.equal(month.spending, 2293);
+  assert.equal(month.income, 0);
+  assert.equal(month.unclassifiedCredits, 4000);
+  assert.equal(month.netMovement, 1707);
+  assert.equal(projected.metrics.spentThisMonth, 2293);
+});
+
+test("approved historical batches change only selected categories, preserve manual edits and can be undone", () => {
+  const source = getDemoSnapshot();
+  source.transactions = source.transactions.slice(0, 3).map((item) => ({ ...item, category: "Other" }));
+  const state: LedgerState = { corrections: { t1: { category: "Health", person: "Partner" } }, budgets: {}, rules: {}, recurring: {}, classifications: { batch: { category: "Groceries", transactionIds: ["t1", "t3"], active: true } } };
+  const approved = applyLedger(source, state);
+  assert.equal(approved.transactions[0].category, "Health");
+  assert.equal(approved.transactions[1].category, "Uncategorised");
+  assert.equal(approved.transactions[2].category, "Groceries");
+  assert.equal(approved.transactions[2].person, source.transactions[2].person);
+  assert.equal(approved.transactions[2].isTransfer, source.transactions[2].isTransfer);
+  state.classifications!.batch.active = false;
+  assert.equal(applyLedger(source, state).transactions[2].category, "Uncategorised");
+  assert.throws(() => validateMutation({ kind: "classification", id: "batch", value: { category: "Transfer", transactionIds: ["t1"], active: true } }));
+  assert.throws(() => validateMutation({ kind: "classification", id: "batch", value: { category: "Groceries", transactionIds: ["t1", "t1"], active: true } }));
+});
+
 test("monthly history excludes transfers and pending, nets refunds and isolates people", () => {
   const base = getDemoSnapshot().transactions[0];
   const rows = [
@@ -17,7 +46,7 @@ test("monthly history excludes transfers and pending, nets refunds and isolates 
     { ...base, id: "partner", date: "2026-09-03", amount: -99999, person: "Partner" as const },
   ];
   const history = monthlyHistory(rows, "2026-10", "Stefan");
-  assert.deepEqual(history[0], { month: "2026-09", income: 50000, spending: 8000, surplus: 42000, count: 3, current: false });
+  assert.deepEqual(history[0], { month: "2026-09", income: 50000, spending: 8000, surplus: 42000, unclassifiedCredits: 0, netMovement: 42000, count: 3, current: false });
   assert.equal(history[1].current, true);
   assert.equal(history[1].count, 0);
 });

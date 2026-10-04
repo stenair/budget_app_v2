@@ -33,6 +33,8 @@ export function validateMutation(body: unknown, customCategories: string[] = [])
     if ((v.amount as number) > 0 && v.category !== "Income" || (v.amount as number) < 0 && v.category === "Income") return fail();
   } else if (kind === "category") {
     if (Object.keys(v).some((key) => !["name", "hidden"].includes(key)) || typeof v.name !== "string" || !v.name.trim() || v.name !== v.name.trim() || v.name.length > 40 || /[\x00-\x1f]/.test(v.name) || typeof v.hidden !== "boolean" || ["income", "transfer"].includes(v.name.toLowerCase())) return fail();
+  } else if (kind === "classification") {
+    if (Object.keys(v).some((key) => !["category", "transactionIds", "active"].includes(key)) || !validCategory(v.category) || ["Transfer", "Uncategorised"].includes(v.category as string) || typeof v.active !== "boolean" || !Array.isArray(v.transactionIds) || v.transactionIds.length < 1 || v.transactionIds.length > 100 || new Set(v.transactionIds).size !== v.transactionIds.length || v.transactionIds.some((id) => typeof id !== "string" || id.length > 180 || !id)) return fail();
   } else if (kind === "household") {
     if (id !== "names" || Object.keys(v).some((key) => !["stefan", "partner"].includes(key)) || [v.stefan, v.partner].some((name) => typeof name !== "string" || !name.trim() || name.length > 40 || /[\x00-\x1f]/.test(name))) return fail();
   } else return fail();

@@ -7,6 +7,7 @@ import type {
 const demoMonth = "2026-10";
 
 const demoTransactions: FinanceTransaction[] = [
+
   tx("t1", "2026-10-04", "Fresh Market", -12840, "Groceries", "Shared", "posted"),
   tx("t2", "2026-10-04", "Little Bay Coffee", -1450, "Eating out", "Stefan", "pending"),
   tx("t3", "2026-10-03", "City Energy", -18620, "Utilities", "Shared", "posted"),
@@ -19,6 +20,8 @@ const demoTransactions: FinanceTransaction[] = [
   tx("t10", "2026-09-30", "Credit card payment", 486200, "Transfer", "Shared", "posted", "card", true),
   tx("t11", "2026-09-30", "Credit card payment", -486200, "Transfer", "Shared", "posted", "offset", true),
   tx("t12", "2026-09-29", "Neighbourhood Grocer", -16480, "Groceries", "Shared", "posted"),
+  tx("review-demo-purchase", "2026-10-03", "Unidentified merchant", -2293, "Uncategorised", "Unknown", "posted"),
+  tx("review-demo-credit", "2026-10-03", "Unidentified deposit", 4000, "Uncategorised", "Unknown", "posted", "offset"),
   tx("t13", "2026-09-28", "Riverside Restaurant", -11200, "Eating out", "Partner", "posted"),
 ];
 
@@ -51,6 +54,7 @@ function tx(
 }
 
 const baseBudgets: Omit<BudgetLine, "spent" | "pending">[] = [
+  { id: "uncategorised", name: "Uncategorised", icon: "other", color: "#c19a3e", limit: 0, allocation: null },
   { id: "groceries", name: "Groceries", icon: "basket", color: "#3f7d65", limit: 105000, allocation: null },
   { id: "eating", name: "Eating out", icon: "utensils", color: "#d47d56", limit: 65000, allocation: { stefan: 50, partner: 50 } },
   { id: "transport", name: "Transport", icon: "car", color: "#4b74a8", limit: 45000, allocation: null },

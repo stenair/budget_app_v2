@@ -29,6 +29,7 @@ export type FinanceTransaction = {
   amount: number;
   currency: string;
   category: string;
+  categorySource?: "unclassified" | "suggested" | "manual" | "rule";
   person: Person;
   merchantCategoryCode: string | null;
   isTransfer: boolean;
@@ -53,11 +54,13 @@ export type ForecastPoint = {
 };
 
 export type FinanceSnapshot = {
+  classificationBatches?: Array<{ id: string; category: string; transactionIds: string[]; active: boolean }>;
   categoryNames?: string[];
   budgetCategories?: Array<{ id: string; name: string; hidden: boolean }>;
   householdNames?: HouseholdNames;
   plannedIncome?: number;
   plannedSpending?: number;
+  expensePlan?: Array<{ category: string; budget: number; recurring: number; total: number }>;
   month?: string;
   recurring?: RecurringItem[];
   plannedSurplus?: number;

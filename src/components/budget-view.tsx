@@ -14,7 +14,7 @@ import type { BudgetLine, FinanceTransaction } from "@/lib/finance/types";
 import { useLedgerSave } from "@/components/use-ledger-save";
 import Link from "next/link";
 import { useHousehold } from "@/components/household-context";
-import { activityLink, monthlyHistory, monthLabel } from "@/lib/finance/history";
+import { activityLink, expenseContribution, monthlyHistory, monthLabel } from "@/lib/finance/history";
 
 export function BudgetView({ initialBudgets, mode, transactions, month, categoryDefinitions }: { initialBudgets: BudgetLine[]; mode: "preview" | "live"; transactions: FinanceTransaction[]; month: string; categoryDefinitions: Array<{ id: string; name: string; hidden: boolean }> }) {
   const { names } = useHousehold();
@@ -75,7 +75,7 @@ export function BudgetView({ initialBudgets, mode, transactions, month, category
             const days = new Date(year, monthNumber, 0).getDate();
             const variable = ["Groceries", "Eating out", "Transport", "Clothing", "Entertainment", "Shopping"].includes(budget.name);
             const projected = variable ? Math.round(used / day * days) : null;
-            const personSpend = (person: string) => -transactions.filter((item) => item.date.startsWith(month) && !item.isTransfer && item.category === budget.name && item.person === person).reduce((sum, item) => sum + item.amount, 0);
+            const personSpend = (person: string) => transactions.filter((item) => item.date.startsWith(month) && !item.isTransfer && item.category === budget.name && item.person === person).reduce((sum, item) => sum + expenseContribution(item), 0);
             return (
               <div key={budget.id} className="rounded-xl border bg-background p-4">
                 <div className="flex items-start gap-3">
@@ -126,7 +126,7 @@ export function BudgetView({ initialBudgets, mode, transactions, month, category
 }
 
 function CategoryHistory({ name, transactions, month, target, onUseAverage, pending, canSet }: { name: string; transactions: FinanceTransaction[]; month: string; target: number; onUseAverage: (amount: number) => void; pending: boolean; canSet: boolean }) {
-  const rows = monthlyHistory(transactions, month).map((row) => ({ ...row, spending: -transactions.filter((item) => item.date.startsWith(row.month) && item.category === name && item.status === "posted" && !item.isTransfer && item.currency.toLowerCase() === "aud").reduce((sum, item) => sum + item.amount, 0) }));
+  const rows = monthlyHistory(transactions, month).map((row) => ({ ...row, spending: transactions.filter((item) => item.date.startsWith(row.month) && item.category === name && item.status === "posted" && !item.isTransfer && item.currency.toLowerCase() === "aud").reduce((sum, item) => sum + expenseContribution(item), 0) }));
   const past = rows.filter((row) => !row.current && row.count > 0);
   const average = past.length ? Math.round(past.reduce((sum, row) => sum + row.spending, 0) / past.length) : null;
   const max = Math.max(1, target, ...rows.map((row) => row.spending));

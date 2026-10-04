@@ -102,7 +102,7 @@ function inferCategory(item: RedbarkTransaction) {
     entertainment: "Entertainment",
     merchandise: "Shopping",
   };
-  return provider ? providerMap[provider] ?? "Other" : "Other";
+  return provider ? providerMap[provider] ?? "Uncategorised" : "Uncategorised";
 }
 
 function firstDayThreeMonthsAgo() {

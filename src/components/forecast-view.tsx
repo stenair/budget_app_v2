@@ -6,14 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { PageHeading } from "@/components/page-heading";
 import { formatMoney } from "@/lib/finance/format";
-import type { ForecastPoint, FinanceTransaction } from "@/lib/finance/types";
+import type { ForecastPoint, FinanceTransaction, FinanceSnapshot } from "@/lib/finance/types";
 import { monthlyHistory, monthLabel } from "@/lib/finance/history";
 import { MonthlyChart } from "@/components/monthly-chart";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { ForecastChart } from "./forecast-chart";
 
-export function ForecastView({ points, monthlySurplus, ready, transactions, month, plannedIncome, plannedSpending }: { points: ForecastPoint[]; monthlySurplus: number; ready: boolean; transactions: FinanceTransaction[]; month: string; plannedIncome: number; plannedSpending: number }) {
+export function ForecastView({ points, monthlySurplus, ready, transactions, month, plannedIncome, plannedSpending, expensePlan }: { points: ForecastPoint[]; monthlySurplus: number; ready: boolean; transactions: FinanceTransaction[]; month: string; plannedIncome: number; plannedSpending: number; expensePlan: NonNullable<FinanceSnapshot["expensePlan"]> }) {
   const [months, setMonths] = useState(12);
   const [incomeInput, setIncomeInput] = useState(String(plannedIncome / 100));
   const [expenseInput, setExpenseInput] = useState(String(plannedSpending / 100));
@@ -57,7 +58,7 @@ export function ForecastView({ points, monthlySurplus, ready, transactions, mont
             <div className="text-left sm:text-right"><p className="text-xs text-muted-foreground">In {months} months</p><p className="mt-1 text-2xl font-semibold">{formatMoney(endValue)}</p></div>
           </CardHeader>
           <CardContent>
-            <ForecastChart points={adjusted} />
+            <ForecastChart points={adjusted} comparison={spendingChange !== 0 || extraMortgage !== 0} />
             <div className="mt-3 flex justify-between text-[11px] text-muted-foreground"><span>{adjusted[0]?.label}</span><span>{adjusted.at(-1)?.label}</span></div>
           </CardContent>
         </Card>
@@ -70,6 +71,7 @@ export function ForecastView({ points, monthlySurplus, ready, transactions, mont
               <label className="block text-xs font-medium">Expected monthly expenses ($)<Input className="mt-1" type="number" min={0} max={1000000} step="0.01" required value={expenseInput} onChange={(event) => setExpenseInput(event.target.value)} /></label>
               <div className="flex flex-wrap gap-2"><Button size="sm" type="submit">Apply scenario</Button><Button size="sm" variant="ghost" type="button" onClick={() => { setOverride(null); setIncomeInput(String(plannedIncome / 100)); setExpenseInput(String(plannedSpending / 100)); }}>Use saved plan</Button></div>
               <p className="text-[11px] leading-5 text-muted-foreground">{override ? "Using temporary scenario inputs." : "Using your saved recurring income, bills and budgets."} Scenario inputs are not saved; update the schedule or budgets below for your ongoing plan.</p>
+              <details className="rounded-lg border p-3"><summary className="cursor-pointer text-xs font-medium">Where saved expenses come from: {formatMoney(plannedSpending)}</summary><p className="mt-2 text-xs leading-5 text-muted-foreground">For each category, Harbour uses the larger of its budget target and monthly recurring bills. The total includes category budgets even when no bill is scheduled. Change these targets in Budgets.</p><div className="mt-3 space-y-2">{expensePlan.filter((item) => item.total > 0).map((item) => <div key={item.category} className="flex justify-between gap-3 text-xs"><div><p className="font-medium">{item.category}</p><p className="text-muted-foreground">Budget {formatMoney(item.budget)} · bills {formatMoney(item.recurring)}</p></div><span className="shrink-0 font-semibold">{formatMoney(item.total)}</span></div>)}</div><Link href="/budgets" className="mt-3 inline-block text-xs text-primary underline">Review budget targets</Link></details>
             </form>
             <ScenarioSlider label="Extra household spending" value={spendingChange} min={-1000} max={2000} step={50} onChange={setSpendingChange} helper="Use a negative amount for monthly savings." />
             <ScenarioSlider label="Extra mortgage payment" value={extraMortgage} min={0} max={3000} step={100} onChange={setExtraMortgage} helper="Reduces liquid funds in this forecast." />
@@ -104,31 +106,6 @@ function ScenarioSlider({ label, value, min, max, step, onChange, helper }: { la
       <div className="mb-3 flex items-center justify-between gap-3"><label className="text-sm font-medium">{label}</label><span className="rounded-md bg-muted px-2 py-1 text-xs font-semibold">{value < 0 ? "−" : ""}${Math.abs(value).toLocaleString("en-AU")}</span></div>
       <Slider value={[value]} min={min} max={max} step={step} onValueChange={(next) => onChange(next[0] ?? 0)} aria-label={label} />
       <p className="mt-2 text-[11px] text-muted-foreground">{helper}</p>
-    </div>
-  );
-}
-
-function ForecastChart({ points }: { points: Array<ForecastPoint & { value: number }> }) {
-  const width = 760;
-  const height = 260;
-  const pad = 12;
-  const values = points.map((point) => point.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = Math.max(1, max - min);
-  const coords = points.map((point, index) => ({ x: pad + (index / Math.max(1, points.length - 1)) * (width - pad * 2), y: height - pad - ((point.value - min) / range) * (height - pad * 2) }));
-  const line = coords.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
-  const area = `${line} L${coords.at(-1)?.x ?? width - pad},${height - pad} L${coords[0]?.x ?? pad},${height - pad} Z`;
-  return (
-    <div className="overflow-hidden rounded-xl bg-secondary/45 px-2 py-4">
-      <div className="mb-2 flex justify-between gap-3 px-2 text-[11px] text-muted-foreground"><span>Low {formatMoney(min)}</span><span>High {formatMoney(max)}</span></div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-44 w-full sm:h-64" role="img" aria-label={`Net liquid forecast from ${points[0]?.label} to ${points.at(-1)?.label}`}>
-        <defs><linearGradient id="forecast-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--primary)" stopOpacity="0.24" /><stop offset="100%" stopColor="var(--primary)" stopOpacity="0.02" /></linearGradient></defs>
-        {[0.25, 0.5, 0.75].map((fraction) => <line key={fraction} x1={pad} x2={width - pad} y1={height * fraction} y2={height * fraction} stroke="var(--border)" strokeDasharray="4 6" />)}
-        <path d={area} fill="url(#forecast-fill)" />
-        <path d={line} fill="none" stroke="var(--primary)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        {coords.filter((_, index) => index === 0 || index === coords.length - 1).map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="5" fill="var(--card)" stroke="var(--primary)" strokeWidth="3" />)}
-      </svg>
     </div>
   );
 }
