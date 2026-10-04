@@ -5,7 +5,7 @@ import path from "node:path";
 import { Pool } from "pg";
 
 const storagePath = path.join(/* turbopackIgnore: true */ process.cwd(), ".harbour-data");
-const globalStore = globalThis as typeof globalThis & { harbourPool?: Pool; harbourSchema?: Promise<unknown>; harbourKey?: Promise<Buffer> };
+const globalStore = globalThis as typeof globalThis & { harbourPool?: Pool; harbourPoolInit?: Promise<Pool>; harbourSchema?: Promise<unknown>; harbourKey?: Promise<Buffer> };
 
 async function encryptionKey() {
   const configured = process.env.DATA_ENCRYPTION_KEY;
@@ -46,8 +46,10 @@ async function database() {
     if (process.env.NODE_ENV === "production") throw new Error("Configure PostgreSQL DATABASE_URL before deployment.");
     return null;
   }
+  const databaseUrl = process.env.DATABASE_URL;
   if (!globalStore.harbourPool) {
-    const connection = new URL(process.env.DATABASE_URL);
+    globalStore.harbourPoolInit ??= (async () => {
+    const connection = new URL(databaseUrl);
     const isSupabase = connection.hostname.endsWith(".pooler.supabase.com") || connection.hostname.endsWith(".supabase.co");
     const ssl = isSupabase ? {
       ca: await readFile(path.join(process.cwd(), "certs/supabase-ca.crt"), "utf8"),
@@ -56,7 +58,9 @@ async function database() {
     if (isSupabase) {
       for (const parameter of ["sslmode", "sslcert", "sslkey", "sslrootcert"]) connection.searchParams.delete(parameter);
     }
-    globalStore.harbourPool = new Pool({ connectionString: connection.toString(), ssl, max: 4, connectionTimeoutMillis: 10000 });
+    return new Pool({ connectionString: connection.toString(), ssl, max: 4, connectionTimeoutMillis: 10000 });
+    })().catch((error) => { globalStore.harbourPoolInit = undefined; throw error; });
+    globalStore.harbourPool = await globalStore.harbourPoolInit;
   }
   globalStore.harbourSchema ??= globalStore.harbourPool.query(`CREATE TABLE IF NOT EXISTS harbour_records (
     scope text NOT NULL, key text NOT NULL, payload text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(scope, key)

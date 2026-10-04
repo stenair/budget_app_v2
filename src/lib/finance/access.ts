@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { currentUser } from "@clerk/nextjs/server";
 
 export class AccessError extends Error {
@@ -9,7 +10,7 @@ export function authConfigured() {
   return Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
 }
 
-export async function householdAccess() {
+export const householdAccess = cache(async () => {
   if (!authConfigured()) {
     if (process.env.NODE_ENV === "production") throw new AccessError(503, "Household login needs configuration.");
     const live = Boolean(process.env.REDBARK_API_KEY && process.env.ALLOW_LIVE_DATA_WITHOUT_AUTH === "true");
@@ -23,7 +24,7 @@ export async function householdAccess() {
     throw new AccessError(403, "This account is not a member of this household.");
   }
   return { scope: "household", actor: user.id, live: Boolean(process.env.REDBARK_API_KEY) };
-}
+});
 
 export function assertSameOrigin(request: Request) {
   const origin = request.headers.get("origin");

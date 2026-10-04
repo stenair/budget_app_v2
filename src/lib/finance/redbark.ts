@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import { after } from "next/server";
 import type { FinanceAccount, FinanceSnapshot, FinanceTransaction } from "./types";
 import { buildBudgets, getDemoSnapshot } from "./demo";
 import { householdAccess } from "./access";
@@ -7,6 +8,7 @@ import { readLedger } from "./ledger";
 import { applyLedger, perthDate } from "./project";
 import { readRecords, writeRecord } from "./store";
 import { matchOwnedTransfers } from "./transfers";
+import { resolveSnapshot } from "./snapshot-cache";
 
 const baseUrl = "https://api.redbark.com/v2";
 
@@ -224,22 +226,44 @@ export async function getLiveSnapshot(): Promise<FinanceSnapshot> {
   };
 }
 
-export const getFinanceSnapshot = cache(async (): Promise<FinanceSnapshot> => {
-  const access = await householdAccess();
-  const ledger = await readLedger(access.scope);
-  if (!access.live) return applyLedger(getDemoSnapshot(), ledger);
-  const previous = (await readRecords<FinanceSnapshot>(access.scope, "snapshot:current"))[0]?.value;
-  if (previous && Date.now() - new Date(previous.generatedAt).getTime() < 60000) return applyLedger(previous, ledger);
-  try {
+const refreshes = new Map<string, Promise<FinanceSnapshot>>();
+const lastAttempts = new Map<string, number>();
+
+async function refreshSnapshot(scope: string, previous?: FinanceSnapshot): Promise<FinanceSnapshot> {
+  const existing = refreshes.get(scope);
+  if (existing) return existing;
+  if (previous && Date.now() - (lastAttempts.get(scope) ?? 0) < 60000) return previous;
+  lastAttempts.set(scope, Date.now());
+  const work = (async () => { try {
     const snapshot = await getLiveSnapshot();
     const currentIds = new Set(snapshot.transactions.map((item) => item.id));
     // Retain posted history outside the authoritative fetch window; replace pending rows on each successful read.
     const start = firstDayThreeMonthsAgo();
     snapshot.transactions = [...snapshot.transactions, ...(previous?.transactions ?? []).filter((item) => item.status === "posted" && item.date < start && !currentIds.has(item.id))].toSorted((a, b) => b.date.localeCompare(a.date));
-    await writeRecord(access.scope, "snapshot:current", snapshot, "redbark-read");
-    return applyLedger(snapshot, ledger);
+    await writeRecord(scope, "snapshot:current", snapshot, "redbark-read");
+    return snapshot;
   } catch {
     if (!previous) throw new Error("The Redbark feed could not be loaded. Check the server key and account consent.");
-    return applyLedger({ ...previous, connection: { ...previous.connection, status: "error", message: "Redbark could not be reached. Showing the last successful snapshot." } }, ledger);
-  }
+    const fallback: FinanceSnapshot = { ...previous, connection: { ...previous.connection, status: "error", message: "Redbark could not be reached. Showing the last successful snapshot." } };
+    await writeRecord(scope, "snapshot:current", fallback, "redbark-refresh-failed");
+    return fallback;
+  } })();
+  refreshes.set(scope, work);
+  try { return await work; } finally { refreshes.delete(scope); }
+}
+
+export const getFinanceSnapshot = cache(async (): Promise<FinanceSnapshot> => {
+  const access = await householdAccess();
+  const [ledger, rows] = await Promise.all([
+    readLedger(access.scope),
+    access.live ? readRecords<FinanceSnapshot>(access.scope, "snapshot:current") : Promise.resolve([]),
+  ]);
+  if (!access.live) return applyLedger(getDemoSnapshot(), ledger);
+  const previous = rows[0]?.value;
+  const snapshot = await resolveSnapshot(previous, () => refreshSnapshot(access.scope, previous), (work) => {
+    after(async () => {
+      try { await work(); } catch { console.error("Harbour background bank refresh failed."); }
+    });
+  });
+  return applyLedger(snapshot, ledger);
 });
