@@ -7,10 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLedgerSave } from "@/components/use-ledger-save";
 import { formatMoney } from "@/lib/finance/format";
-import { categories } from "@/lib/finance/ledger-types";
+import { useHousehold } from "@/components/household-context";
 import type { RecurringItem } from "@/lib/finance/ledger-types";
 
 export function RecurringEditor({ items }: { items: RecurringItem[] }) {
+  const { categoryNames: categories } = useHousehold();
   const [draft, setDraft] = useState<RecurringItem | null>(null);
   const [dollars, setDollars] = useState("");
   const { save, pending, error, message } = useLedgerSave();

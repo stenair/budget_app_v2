@@ -1,5 +1,6 @@
 import type { FinanceSnapshot, FinanceTransaction } from "./types";
 import type { LedgerState, RecurringItem } from "./ledger-types";
+import { categories } from "./ledger-types";
 
 export function perthDate(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Perth", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
@@ -27,7 +28,12 @@ export function applyLedger(snapshot: FinanceSnapshot, ledger: LedgerState): Fin
     const correction = ledger.corrections[transaction.id];
     return { ...transaction, ...(rule ? { category: rule.category, person: rule.person, isTransfer: rule.category === "Transfer" ? true : transaction.isTransfer } : {}), ...correction, reviewReason: correction?.isTransfer !== undefined || rule?.category === "Transfer" ? undefined : transaction.reviewReason };
   });
-  const budgets = snapshot.budgets.map((budget) => {
+  const baseBudgets = [...snapshot.budgets];
+  for (const [id, definition] of Object.entries(ledger.categories ?? {})) {
+    if (!baseBudgets.some((budget) => budget.id === id)) baseBudgets.push({ id, name: definition.name, icon: "other", color: "#3f7d65", limit: 0, spent: 0, pending: 0, allocation: null });
+  }
+  const budgetCategories = baseBudgets.map((budget) => ({ id: budget.id, name: budget.name, hidden: ledger.categories?.[budget.id]?.hidden ?? false }));
+  const budgets = baseBudgets.filter((budget) => !ledger.categories?.[budget.id]?.hidden).map((budget) => {
     const matching = transactions.filter((item) => item.date.startsWith(month) && item.category === budget.name && !item.isTransfer && item.currency.toLowerCase() === "aud");
     return {
       ...budget,
@@ -50,7 +56,9 @@ export function applyLedger(snapshot: FinanceSnapshot, ledger: LedgerState): Fin
   const netLiquid = snapshot.metrics.offsetBalance - snapshot.metrics.cardOwing;
   const [year, monthNumber] = month.split("-").map(Number);
   return {
-    ...snapshot, transactions, budgets, recurring, month, plannedSurplus, forecastReady: plannedIncome > 0,
+    ...snapshot, transactions, budgets, recurring, month, plannedSurplus, plannedIncome, plannedSpending, forecastReady: plannedIncome > 0,
+    budgetCategories, categoryNames: [...new Set([...categories, ...Object.values(ledger.categories ?? {}).map((item) => item.name)])],
+    householdNames: ledger.household?.names ?? { stefan: "Stefan", partner: "Partner" },
     forecast: Array.from({ length: 13 }, (_, index) => {
       const date = new Date(Date.UTC(year, monthNumber - 1 + index, 1));
       return { month: date.toISOString().slice(0, 7), label: new Intl.DateTimeFormat("en-AU", { month: "short", year: "2-digit", timeZone: "UTC" }).format(date), baseline: netLiquid + (plannedIncome > 0 ? plannedSurplus * index : 0) };

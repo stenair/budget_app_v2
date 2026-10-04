@@ -7,15 +7,21 @@ export type TransactionCorrection = { category?: string; person?: Person; isTran
 export type BudgetPlan = { limit: number; allocation: { stefan: number; partner: number } | null };
 export type MerchantRule = { match: string; category: string; person: Person };
 export type RecurringItem = { id: string; name: string; category: string; amount: number; day: number; person: Person; active: boolean };
+export type CategoryDefinition = { name: string; hidden: boolean };
+export type HouseholdNames = { stefan: string; partner: string };
 export type LedgerState = {
   corrections: Record<string, TransactionCorrection>;
   budgets: Record<string, BudgetPlan>;
   rules: Record<string, MerchantRule>;
   recurring: Record<string, RecurringItem>;
+  categories?: Record<string, CategoryDefinition>;
+  household?: Record<string, HouseholdNames>;
 };
 
 export type LedgerMutation =
   | { kind: "transaction"; id: string; value: TransactionCorrection }
   | { kind: "budget"; id: string; value: BudgetPlan }
   | { kind: "rule"; id: string; value: MerchantRule }
-  | { kind: "recurring"; id: string; value: RecurringItem };
+  | { kind: "recurring"; id: string; value: RecurringItem }
+  | { kind: "category"; id: string; value: CategoryDefinition }
+  | { kind: "household"; id: string; value: HouseholdNames };

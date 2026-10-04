@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useHousehold } from "@/components/household-context";
 
 const nav = [
   { href: "/", label: "Home", icon: House },
@@ -28,6 +29,7 @@ const nav = [
 
 export function AppShell({ children, mode, connectionStatus, authEnabled }: { children: React.ReactNode; mode: "preview" | "live"; connectionStatus: string; authEnabled: boolean }) {
   const pathname = usePathname();
+  const { names } = useHousehold();
   const router = useRouter();
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === "visible") router.refresh(); };
@@ -102,14 +104,14 @@ export function AppShell({ children, mode, connectionStatus, authEnabled }: { ch
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex -space-x-2" aria-label="Household members">
-                    <span className="grid size-8 place-items-center rounded-full border-2 border-background bg-[#d6e8df] text-[11px] font-semibold text-[#285846]">S</span>
-                    <span className="grid size-8 place-items-center rounded-full border-2 border-background bg-[#e8d9cf] text-[11px] font-semibold text-[#754b34]">P</span>
+                    <span className="grid size-8 place-items-center rounded-full border-2 border-background bg-[#d6e8df] text-[11px] font-semibold text-[#285846]">{names.stefan.slice(0, 1).toUpperCase()}</span>
+                    <span className="grid size-8 place-items-center rounded-full border-2 border-background bg-[#e8d9cf] text-[11px] font-semibold text-[#754b34]">{names.partner.slice(0, 1).toUpperCase()}</span>
                   </div>
                 </TooltipTrigger>
-                <TooltipContent>Stefan and Partner</TooltipContent>
+                <TooltipContent>{names.stefan} and {names.partner}</TooltipContent>
               </Tooltip>
               <div className="hidden text-right sm:block">
-                <p className="text-xs font-medium">Stefan &amp; Partner</p>
+                <p className="max-w-64 truncate text-xs font-medium">{names.stefan} &amp; {names.partner}</p>
                 <p className="text-[11px] text-muted-foreground">Australia/Perth</p>
               </div>
             </div>

@@ -6,6 +6,7 @@ import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/finance/format";
 import { getFinanceSnapshot } from "@/lib/finance/redbark";
+import { HouseholdSettings } from "@/components/household-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function SettingsPage() {
         action={<Badge variant="outline" className="w-fit gap-2 rounded-full bg-card px-3 py-1.5 font-normal"><span className={data.mode === "live" ? "size-2 rounded-full bg-emerald-500" : "size-2 rounded-full bg-amber-500"} />{data.mode === "live" ? "Live mode" : "Preview mode"}</Badge>}
       />
 
+      <div className="mb-4"><HouseholdSettings /></div>
       <section className="grid gap-4 lg:grid-cols-2">
         <Card className="shadow-xs">
           <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Landmark className="size-4 text-primary" /> Bank connection</CardTitle></CardHeader>

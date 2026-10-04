@@ -7,5 +7,5 @@ export const dynamic = "force-dynamic";
 export default async function ForecastPage() {
   const data = await getFinanceSnapshot();
 
-  return <><ForecastView points={data.forecast} monthlySurplus={data.plannedSurplus ?? 0} ready={data.forecastReady ?? false} /><RecurringEditor items={data.recurring ?? []} /></>;
+  return <><ForecastView points={data.forecast} monthlySurplus={data.plannedSurplus ?? 0} ready={data.forecastReady ?? false} transactions={data.transactions} month={data.month ?? ""} plannedIncome={data.plannedIncome ?? 0} plannedSpending={data.plannedSpending ?? 0} /><RecurringEditor items={data.recurring ?? []} /></>;
 }

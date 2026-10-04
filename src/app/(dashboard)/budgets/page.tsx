@@ -6,5 +6,5 @@ export const dynamic = "force-dynamic";
 export default async function BudgetsPage() {
   const data = await getFinanceSnapshot();
 
-  return <BudgetView initialBudgets={data.budgets} mode={data.mode} transactions={data.transactions} month={data.month ?? ""} />;
+  return <BudgetView initialBudgets={data.budgets} mode={data.mode} transactions={data.transactions} month={data.month ?? ""} categoryDefinitions={data.budgetCategories ?? []} />;
 }

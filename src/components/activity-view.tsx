@@ -12,17 +12,26 @@ import { PageHeading } from "@/components/page-heading";
 import { formatMoney, formatShortDate } from "@/lib/finance/format";
 import type { FinanceTransaction, Person } from "@/lib/finance/types";
 import { useLedgerSave } from "@/components/use-ledger-save";
-import { categories, people } from "@/lib/finance/ledger-types";
+import { people } from "@/lib/finance/ledger-types";
+import { useHousehold } from "@/components/household-context";
+import { monthLabel } from "@/lib/finance/history";
 
-export function ActivityView({ initialTransactions, mode }: { initialTransactions: FinanceTransaction[]; mode: "preview" | "live" }) {
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("all");
-  const [person, setPerson] = useState("all");
-  const [status, setStatus] = useState("all");
+export function ActivityView({ initialTransactions, mode, month, filters = {} }: { initialTransactions: FinanceTransaction[]; mode: "preview" | "live"; month: string; filters?: Record<string, string> }) {
+  const { categoryNames: categories, personLabel } = useHousehold();
+  const [query, setQuery] = useState(filters.search ?? "");
+  const [category, setCategory] = useState(filters.category ?? "all");
+  const [person, setPerson] = useState(filters.person ?? "all");
+  const [status, setStatus] = useState(filters.status ?? "all");
+  const [selectedMonth, setSelectedMonth] = useState(filters.month ?? month);
+  const [flow, setFlow] = useState(filters.flow ?? "all");
+  const [merchant, setMerchant] = useState(filters.merchant ?? "");
+  const [visibleCount, setVisibleCount] = useState(40);
+  const [optimistic, setOptimistic] = useState<{ source: FinanceTransaction[]; rows: FinanceTransaction[] } | null>(null);
   const { save, pending, message, error } = useLedgerSave();
   const deferredQuery = useDeferredValue(query);
 
-  const transactions = initialTransactions;
+  const transactions = optimistic?.source === initialTransactions ? optimistic.rows : initialTransactions;
+  const months = [...new Set([month, ...transactions.map((item) => item.date.slice(0, 7))])].sort().reverse();
 
   const filtered = useMemo(() => {
     const search = deferredQuery.trim().toLowerCase();
@@ -31,14 +40,21 @@ export function ActivityView({ initialTransactions, mode }: { initialTransaction
       if (category !== "all" && item.category !== category) return false;
       if (person !== "all" && item.person !== person) return false;
       if (status !== "all" && item.status !== status) return false;
+      if (selectedMonth !== "all" && !item.date.startsWith(selectedMonth)) return false;
+      if (flow !== "all" && item.isTransfer) return false;
+      if (flow === "income" && item.category !== "Income") return false;
+      if (flow === "spending" && item.category === "Income") return false;
+      if (merchant && (item.merchantName ?? item.description) !== merchant) return false;
       return true;
     });
-  }, [category, deferredQuery, person, status, transactions]);
+  }, [category, deferredQuery, person, status, transactions, selectedMonth, flow, merchant]);
 
   function update(id: string, value: Partial<{ category: string; person: Person }>) {
     const item = transactions.find((transaction) => transaction.id === id);
     if (!item) return;
-    save({ kind: "transaction", id, value: { category: item.category, person: item.person, isTransfer: value.category ? value.category === "Transfer" : item.isTransfer, ...value } });
+    const correction = { category: item.category, person: item.person, isTransfer: value.category ? value.category === "Transfer" : item.isTransfer, ...value };
+    setOptimistic({ source: initialTransactions, rows: transactions.map((row) => row.id === id ? { ...row, ...correction } : row) });
+    void save({ kind: "transaction", id, value: correction }, undefined, () => setOptimistic(null));
   }
 
   const reviewCount = transactions.filter((item) => item.person === "Unknown" && !item.isTransfer).length;
@@ -61,20 +77,25 @@ export function ActivityView({ initialTransactions, mode }: { initialTransaction
 
       <Card className="shadow-xs">
         <CardContent className="p-4 sm:p-5">
-          <div className="grid gap-3 lg:grid-cols-[1fr_180px_160px_140px]">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search merchant or description" className="pl-9" aria-label="Search transactions" />
             </div>
             <FilterSelect value={category} onChange={setCategory} label="All categories" items={categories} />
-            <FilterSelect value={person} onChange={setPerson} label="Everyone" items={people} />
+            <Select value={selectedMonth} onValueChange={(value) => { setSelectedMonth(value); setVisibleCount(40); }}><SelectTrigger aria-label="Activity month"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All months</SelectItem>{months.map((value) => <SelectItem key={value} value={value}>{monthLabel(value)}</SelectItem>)}</SelectContent></Select>
+            <FilterSelect value={person} onChange={setPerson} label="Everyone" items={people} itemLabel={personLabel} />
             <FilterSelect value={status} onChange={setStatus} label="All statuses" items={["posted", "pending"]} />
+            <FilterSelect value={flow} onChange={setFlow} label="All movements" items={["income", "spending", "external"]} itemLabel={(value) => value === "external" ? "Exclude transfers" : value} />
           </div>
+          {merchant ? <p className="mt-3 text-xs font-medium">Merchant: {merchant}</p> : null}
+          <Button variant="ghost" size="sm" className="mt-3" onClick={() => { setQuery(""); setCategory("all"); setPerson("all"); setStatus("all"); setFlow("all"); setMerchant(""); setSelectedMonth("all"); }}>Clear filters</Button>
+          <p className="mt-2 text-xs text-muted-foreground">Matching net movement: {formatMoney(filtered.reduce((sum, item) => sum + item.amount, 0))}. All movements includes transfers.</p>
         </CardContent>
       </Card>
 
       <div className="mt-4 space-y-3">
-        {filtered.length ? filtered.map((item) => (
+        {filtered.length ? filtered.slice(0, visibleCount).map((item) => (
           <Card key={item.id} className="shadow-xs">
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
@@ -92,14 +113,12 @@ export function ActivityView({ initialTransactions, mode }: { initialTransaction
                     </div>
                   </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-[190px_150px_1fr] sm:items-center">
-                    <Select disabled={pending} value={item.category} onValueChange={(value) => update(item.id, { category: value })}>
-                      <SelectTrigger className="h-8 text-xs" aria-label={`Category for ${item.merchantName ?? item.description}`}><SelectValue /></SelectTrigger>
-                      <SelectContent>{categories.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Select disabled={pending} value={item.person} onValueChange={(value) => update(item.id, { person: value as Person })}>
-                      <SelectTrigger className="h-8 text-xs" aria-label={`Person for ${item.merchantName ?? item.description}`}><SelectValue /></SelectTrigger>
-                      <SelectContent>{people.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <select disabled={pending} value={item.category} onChange={(event) => update(item.id, { category: event.target.value })} className="h-8 rounded-lg border bg-background px-2 text-xs" aria-label={`Category for ${item.merchantName ?? item.description}`}>
+                      {categories.map((value) => <option key={value} value={value}>{value}</option>)}
+                    </select>
+                    <select disabled={pending} value={item.person} onChange={(event) => update(item.id, { person: event.target.value as Person })} className="h-8 rounded-lg border bg-background px-2 text-xs" aria-label={`Person for ${item.merchantName ?? item.description}`}>
+                      {people.map((value) => <option key={value} value={value}>{personLabel(value)}</option>)}
+                    </select>
                     <div className="flex justify-end">
                       <Button disabled={pending} variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground" onClick={() => save({ kind: "rule", id: `merchant-${item.id}`, value: { match: (item.merchantName ?? item.description).slice(0, 120), category: item.category, person: item.person } })}><SlidersHorizontal className="size-3.5" /> Use for this merchant</Button>
                     </div>
@@ -112,15 +131,16 @@ export function ActivityView({ initialTransactions, mode }: { initialTransaction
           <Card className="border-dashed shadow-none"><CardContent className="grid min-h-48 place-items-center text-center"><div><Search className="mx-auto size-6 text-muted-foreground" /><p className="mt-3 text-sm font-medium">No matching transactions</p><p className="mt-1 text-xs text-muted-foreground">Try clearing one of the filters.</p></div></CardContent></Card>
         )}
       </div>
+      {filtered.length > visibleCount ? <Button variant="outline" className="mt-4" onClick={() => setVisibleCount((count) => count + 40)}>Show more ({filtered.length - visibleCount} remaining)</Button> : null}
     </div>
   );
 }
 
-function FilterSelect({ value, onChange, label, items }: { value: string; onChange: (value: string) => void; label: string; items: readonly string[] }) {
+function FilterSelect({ value, onChange, label, items, itemLabel = (item) => item }: { value: string; onChange: (value: string) => void; label: string; items: readonly string[]; itemLabel?: (item: string) => string }) {
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger aria-label={label}><SelectValue placeholder={label} /></SelectTrigger>
-      <SelectContent><SelectItem value="all">{label}</SelectItem>{items.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
+      <SelectContent><SelectItem value="all">{label}</SelectItem>{items.map((item) => <SelectItem key={item} value={item}>{itemLabel(item)}</SelectItem>)}</SelectContent>
     </Select>
   );
 }
