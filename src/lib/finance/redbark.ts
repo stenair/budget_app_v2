@@ -7,6 +7,7 @@ import { householdAccess } from "./access";
 import { readLedger } from "./ledger";
 import { applyLedger, perthDate } from "./project";
 import { readRecords, writeRecord } from "./store";
+import { isCashFlowMovement, expenseContribution } from "./history";
 import { matchOwnedTransfers } from "./transfers";
 import { resolveSnapshot } from "./snapshot-cache";
 
@@ -141,7 +142,6 @@ export async function getLiveSnapshot(): Promise<FinanceSnapshot> {
 
   const transactionLists = await Promise.all(
     accounts
-      .filter((account) => account.type !== "loan")
       .map((account) =>
         listAll<RedbarkTransaction>(
           `/transactions?account=${encodeURIComponent(account.id)}&from=${firstDayThreeMonthsAgo()}&include_pending=true&limit=100`,
@@ -154,6 +154,7 @@ export async function getLiveSnapshot(): Promise<FinanceSnapshot> {
       id: item.id,
       accountId: item.account,
       accountName: accountNames.get(item.account) ?? "NAB account",
+      accountType: accounts.find((account) => account.id === item.account)?.type,
       status: item.status === "pending" ? "pending" : "posted",
       date: item.date,
       description: item.description,
@@ -167,17 +168,17 @@ export async function getLiveSnapshot(): Promise<FinanceSnapshot> {
     }))
     .toSorted((a, b) => b.date.localeCompare(a.date));
   if (transactions.some((item) => item.currency.toLowerCase() !== "aud" || !Number.isSafeInteger(item.amount))) throw new Error("A transaction cannot be represented safely in the AUD ledger.");
-  transactions = matchOwnedTransfers(transactions);
+  transactions = matchOwnedTransfers(transactions, accounts);
 
   const now = new Date();
   const month = perthDate(now).slice(0, 7);
   const income = transactions
-    .filter((item) => item.date.startsWith(month) && item.amount > 0 && !item.isTransfer)
+    .filter((item) => item.date.startsWith(month) && item.category === "Income" && item.status === "posted" && isCashFlowMovement(item))
     .reduce((sum, item) => sum + item.amount, 0);
-  const spending = Math.abs(
+  const spending = (
     transactions
-      .filter((item) => item.date.startsWith(month) && item.amount < 0 && !item.isTransfer)
-      .reduce((sum, item) => sum + item.amount, 0),
+      .filter((item) => item.date.startsWith(month) && item.status === "posted" && isCashFlowMovement(item))
+      .reduce((sum, item) => sum + expenseContribution(item), 0)
   );
   const offset = accounts.filter((account) => account.type === "transaction").reduce((sum, account) => sum + account.current, 0);
   const cardOwing = -accounts.filter((account) => account.type === "credit-card").reduce((sum, account) => sum + account.current, 0);

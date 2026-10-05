@@ -28,7 +28,7 @@ import { people } from "@/lib/finance/ledger-types";
 
 import { useHousehold } from "@/components/household-context";
 
-import { monthLabel, expenseContribution } from "@/lib/finance/history";
+import { monthLabel, expenseContribution, isCashFlowMovement } from "@/lib/finance/history";
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./ui/sheet";
 import { CategorisationReview } from "./categorisation-review";
@@ -53,7 +53,7 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
   const [selectedMonth, setSelectedMonth] = useState(filters.month ?? month);
 
-  const [flow, setFlow] = useState(filters.flow ?? "all");
+  const [flow, setFlow] = useState(filters.flow ?? (filters.account ? "all" : "external"));
 
   const [merchant, setMerchant] = useState(filters.merchant ?? "");
 
@@ -77,8 +77,8 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
       if (from && item.date < from || to && item.date > to) return false;
       if (account !== "all" && item.accountId !== account) return false;
-      if (review === "category" && item.category !== "Uncategorised") return false;
-      if (review === "person" && (item.person !== "Unknown" || item.isTransfer)) return false;
+      if (review === "category" && (item.category !== "Uncategorised" || !isCashFlowMovement(item))) return false;
+      if (review === "person" && (item.person !== "Unknown" || !isCashFlowMovement(item))) return false;
       if (review === "transfer" && !item.reviewReason) return false;
       if (search && !`${item.merchantName ?? ""} ${item.description} ${item.category}`.toLowerCase().includes(search)) return false;
 
@@ -90,7 +90,7 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
       if (selectedMonth !== "all" && !item.date.startsWith(selectedMonth)) return false;
 
-      if (flow !== "all" && item.isTransfer) return false;
+      if (flow !== "all" && !isCashFlowMovement(item)) return false;
 
       if (flow === "income" && item.category !== "Income") return false;
 
@@ -118,7 +118,7 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
   }
 
-  const reviewCount = transactions.filter((item) => item.person === "Unknown" && !item.isTransfer).length;
+  const reviewCount = transactions.filter((item) => item.person === "Unknown" && isCashFlowMovement(item)).length;
 
   return (
 
@@ -130,7 +130,7 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
         title="Activity"
 
-        description="Review every movement once, then teach the household ledger how it should be treated."
+        description="Review and categorise your household transactions."
 
         action={<Badge variant="outline" className="w-fit gap-2 rounded-full bg-card px-3 py-1.5 font-normal"><span className={mode === "live" ? "size-2 rounded-full bg-emerald-500" : "size-2 rounded-full bg-amber-500"} />{mode === "live" ? "Live Redbark feed" : "Preview data"}</Badge>}
 
@@ -140,7 +140,7 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
       <section className="mb-4 grid gap-3 sm:grid-cols-3">
 
-        <StatusCard icon={<CheckCircle2 />} label="Categorised" value={`${Math.round((transactions.filter((item) => item.category !== "Uncategorised").length / Math.max(1, transactions.length)) * 100)}%`} detail="of imported activity" />
+        <StatusCard icon={<CheckCircle2 />} label="Categorised" value={`${Math.round((transactions.filter((item) => isCashFlowMovement(item) && item.category !== "Uncategorised").length / Math.max(1, transactions.filter(isCashFlowMovement).length)) * 100)}%`} detail="of everyday activity" />
 
         <StatusCard icon={<UserRoundCheck />} label="Needs person" value={String(reviewCount)} detail="transactions to review" />
 
@@ -148,7 +148,7 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
       </section>
 
-      <div className="mb-3 flex flex-wrap gap-2"><Button size="sm" variant={review === "category" ? "default" : "outline"} onClick={() => { setReview("category"); setSelectedMonth("all"); setCategory("all"); setFlow("all"); }}>Uncategorised</Button><Button size="sm" variant={review === "person" ? "default" : "outline"} onClick={() => { setReview("person"); setSelectedMonth("all"); }}>Needs person</Button><Button size="sm" variant={review === "transfer" ? "default" : "outline"} onClick={() => { setReview("transfer"); setSelectedMonth("all"); }}>Check transfers</Button></div>
+      <div className="mb-3 flex flex-wrap gap-2"><Button size="sm" variant={review === "category" ? "default" : "outline"} onClick={() => { setReview("category"); setSelectedMonth("all"); setCategory("all"); setFlow("external"); }}>Uncategorised</Button><Button size="sm" variant={review === "person" ? "default" : "outline"} onClick={() => { setReview("person"); setSelectedMonth("all"); }}>Needs person</Button><Button size="sm" variant={review === "transfer" ? "default" : "outline"} onClick={() => { setReview("transfer"); setSelectedMonth("all"); setFlow("all"); }}>Check transfers</Button></div>
       <CategorisationReview transactions={transactions} categories={categories} batches={batches} />
 
       <Button className="mb-3 w-full sm:hidden" variant="outline" aria-expanded={filtersOpen} aria-controls="activity-filters" onClick={() => setFiltersOpen(!filtersOpen)}>Filters · {selectedMonth === "all" ? "all months" : monthLabel(selectedMonth)}{category !== "all" ? ` · ${category}` : ""}</Button>
@@ -166,7 +166,7 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
             </div>
 
-            <select aria-label="Activity account" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={account} onChange={(event) => setAccount(event.target.value)}><option value="all">All accounts</option>{[...new Map(transactions.map((item) => [item.accountId, item.accountName]))].map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select>
+            <select aria-label="Activity account" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={account} onChange={(event) => { setAccount(event.target.value); if (transactions.some((item) => item.accountId === event.target.value && item.accountType === "loan")) setFlow("all"); }}><option value="all">All accounts</option>{[...new Map(transactions.map((item) => [item.accountId, item.accountName]))].map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select>
             <select aria-label="Review filter" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={review} onChange={(event) => setReview(event.target.value)}><option value="all">All review states</option><option value="category">Uncategorised</option><option value="person">Needs person</option><option value="transfer">Check transfers</option></select>
             <FilterSelect value={category} onChange={setCategory} label="All categories" items={categories} />
 
@@ -176,7 +176,7 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
             <FilterSelect value={status} onChange={setStatus} label="All statuses" items={["posted", "pending"]} />
 
-            <FilterSelect value={flow} onChange={setFlow} label="All movements" items={["income", "spending", "external"]} itemLabel={(value) => value === "external" ? "Exclude transfers" : value} />
+            <FilterSelect value={flow} onChange={setFlow} label="All movements" items={["income", "spending", "external"]} itemLabel={(value) => value === "external" ? "Everyday activity" : value} />
 
           </div>
 
@@ -184,9 +184,9 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
           {from || to ? <p className="mt-2 text-xs">Date range: {from || "start"} to {to || "latest"}</p> : null}
           {merchant ? <p className="mt-3 text-xs font-medium">Merchant: {merchant}</p> : null}
 
-          <Button variant="ghost" size="sm" className="mt-3" onClick={() => { setFrom(""); setTo(""); setAccount("all"); setReview("all"); setQuery(""); setCategory("all"); setPerson("all"); setStatus("all"); setFlow("all"); setMerchant(""); setSelectedMonth("all"); }}>Clear filters</Button>
+          <Button variant="ghost" size="sm" className="mt-3" onClick={() => { setFrom(""); setTo(""); setAccount("all"); setReview("all"); setQuery(""); setCategory("all"); setPerson("all"); setStatus("all"); setFlow("external"); setMerchant(""); setSelectedMonth("all"); }}>Clear filters</Button>
 
-          <p className="mt-2 text-xs text-muted-foreground">Matching net movement: {formatMoney(filtered.reduce((sum, item) => sum + item.amount, 0))}. All movements includes transfers.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Cash flow in selection: {formatMoney(filtered.filter(isCashFlowMovement).reduce((sum, item) => sum + item.amount, 0))}. Transfers and loan-account entries excluded.</p>
 
         </CardContent>
 
@@ -214,7 +214,7 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.accountName} · {formatShortDate(item.date)}</p>
 
-                      {item.categorySource === "suggested" ? <p className="mt-1 text-[11px] text-muted-foreground">Suggested category · check before relying on it</p> : null}
+                      {item.categorySource === "suggested" && isCashFlowMovement(item) ? <p className="mt-1 text-[11px] text-muted-foreground">Suggested category · check before relying on it</p> : null}
 
                       {item.reviewReason ? <p className="mt-1 max-w-lg text-[11px] text-amber-700">{item.reviewReason}</p> : null}
 
@@ -222,18 +222,19 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
                     <div className="text-right">
 
-                      <p className={item.amount > 0 ? "font-semibold text-emerald-700" : "font-semibold"}>{formatMoney(item.amount)}</p>
+                      <p className={!isCashFlowMovement(item) ? "font-semibold text-muted-foreground" : item.amount > 0 && item.category === "Income" ? "font-semibold text-emerald-700" : "font-semibold"}>{formatMoney(item.amount)}</p>
 
+                      {!isCashFlowMovement(item) ? <span className="block text-[10px] text-muted-foreground">{item.repayment ? "REPAYMENT · EXCLUDED" : item.accountType === "loan" ? "LOAN LEDGER · EXCLUDED" : "TRANSFER · EXCLUDED"}</span> : null}
                       {item.status === "pending" ? <span className="text-[10px] font-medium text-amber-700">PENDING</span> : null}
 
                     </div>
 
                   </div>
 
-                  <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">Bank details and transfer status</summary><p className="mt-2 break-words">{item.description}</p><p className="mt-1">{item.accountName} · {item.date} · {item.status} · {item.currency.toUpperCase()}</p><p className="mt-1">Category source: {item.categorySource ?? "suggested"}. {item.isTransfer ? "Internal transfer: excluded from expenses." : "External movement: included in reports."}</p><Button disabled={pending} size="sm" variant="outline" className="mt-2" onClick={() => save({ kind: "transaction", id: item.id, value: { isTransfer: !item.isTransfer, category: item.isTransfer ? "Uncategorised" : "Transfer" } })}>{item.isTransfer ? "Count as external movement" : "Mark as internal transfer"}</Button></details>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-[190px_150px_1fr] sm:items-center">
+                  <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">Bank details and transfer status</summary><p className="mt-2 break-words">{item.description}</p><p className="mt-1">{item.accountName} · {item.date} · {item.status} · {item.currency.toUpperCase()}</p><p className="mt-1">Category source: {item.categorySource ?? "suggested"}. {item.accountType === "loan" ? "Loan-account entry: excluded from household income and spending." : item.isTransfer ? "Internal transfer: excluded from income and spending." : item.repayment === "mortgage" ? "Mortgage payment: counted once from the offset account." : "Household cash movement: included in reports."}</p>{item.accountType !== "loan" && item.repayment !== "credit-card" ? <Button disabled={pending} size="sm" variant="outline" className="mt-2" onClick={() => save({ kind: "transaction", id: item.id, value: { isTransfer: !item.isTransfer, category: item.isTransfer ? "Uncategorised" : "Transfer" } })}>{item.isTransfer ? "Count as external movement" : "Mark as internal transfer"}</Button> : null}</details>
+                  {isCashFlowMovement(item) ? <div className="mt-3 grid gap-2 sm:grid-cols-[190px_150px_1fr] sm:items-center">
 
-                    <select disabled={pending} value={item.category} onChange={(event) => update(item.id, { category: event.target.value })} className="h-10 rounded-lg border bg-background px-2 text-xs" aria-label={`Category for ${item.merchantName ?? item.description}`}>
+                    <select disabled={pending || item.accountType === "loan" || item.repayment === "credit-card"} value={item.category} onChange={(event) => update(item.id, { category: event.target.value })} className="h-10 rounded-lg border bg-background px-2 text-xs" aria-label={`Category for ${item.merchantName ?? item.description}`}>
 
                       {categories.map((value) => <option key={value} value={value}>{value}</option>)}
 
@@ -247,11 +248,11 @@ export function ActivityView({ initialTransactions, mode, month, batches = [], f
 
                     <div className="flex justify-end">
 
-                      <Button disabled={pending || ["Uncategorised", "Transfer"].includes(item.category) || (item.merchantName ?? item.description).length > 120} variant="ghost" size="sm" className="h-10 gap-1.5 text-xs text-muted-foreground" onClick={() => setRuleDraft(item)}><SlidersHorizontal className="size-3.5" /> Create merchant rule</Button>
+                      <Button disabled={pending || item.accountType === "loan" || ["Uncategorised", "Transfer"].includes(item.category) || (item.merchantName ?? item.description).length > 120} variant="ghost" size="sm" className="h-10 gap-1.5 text-xs text-muted-foreground" onClick={() => setRuleDraft(item)}><SlidersHorizontal className="size-3.5" /> Create merchant rule</Button>
 
                     </div>
 
-                  </div>
+                  </div> : null}
 
                 </div>
 

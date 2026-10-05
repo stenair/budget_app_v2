@@ -2,7 +2,8 @@ import type { FinanceSnapshot, FinanceTransaction } from "./types";
 import type { LedgerState, RecurringItem } from "./ledger-types";
 import { categories } from "./ledger-types";
 import { planForecast } from "./planning";
-import { expenseContribution } from "./history";
+import { matchOwnedTransfers } from "./transfers";
+import { expenseContribution, isCashFlowMovement } from "./history";
 
 export function perthDate(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Perth", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
@@ -27,13 +28,13 @@ export function applyLedger(snapshot: FinanceSnapshot, ledger: LedgerState): Fin
   const recurringMap = new Map((snapshot.mode === "preview" ? previewRecurring() : []).map((item) => [item.id, item]));
   for (const item of Object.values(ledger.recurring)) recurringMap.set(item.id, item);
   const recurring = [...recurringMap.values()].filter((item) => item.active);
-  const transactions = snapshot.transactions.map((transaction): FinanceTransaction => {
+  const transactions = matchOwnedTransfers(snapshot.transactions, snapshot.accounts).map((transaction): FinanceTransaction => {
     const text = (transaction.merchantName ?? transaction.description).toLowerCase();
     const rule = rules.find((item) => (item.matchMode === "exact" ? text === item.match.toLowerCase() : text.includes(item.match.toLowerCase())) && (!item.direction || (item.direction === "incoming" ? transaction.amount > 0 : transaction.amount < 0)));
     const correction = ledger.corrections[transaction.id];
     const classification = approved.get(transaction.id);
     const resolved = { ...transaction, category: transaction.category === "Other" && !transaction.categorySource ? "Uncategorised" : transaction.category, ...(rule ? { category: rule.category, ...(rule.applyPerson === false ? {} : { person: rule.person }), isTransfer: rule.category === "Transfer" ? true : transaction.isTransfer } : {}), ...(classification ? { category: classification } : {}), ...correction };
-    return { ...resolved, categorySource: correction?.category || classification ? "manual" : rule ? "rule" : resolved.category === "Uncategorised" ? "unclassified" : "suggested", reviewReason: correction?.isTransfer !== undefined || rule?.category === "Transfer" ? undefined : transaction.reviewReason };
+    return { ...resolved, ...(transaction.repayment === "credit-card" ? { isTransfer: true, category: "Transfer" } : {}), categorySource: correction?.category || classification ? "manual" : rule ? "rule" : resolved.category === "Uncategorised" ? "unclassified" : "suggested", reviewReason: correction?.isTransfer !== undefined || rule?.category === "Transfer" ? undefined : transaction.reviewReason };
   });
   const baseBudgets = [...snapshot.budgets];
   if (!baseBudgets.some((item) => item.name === "Uncategorised")) baseBudgets.push({ id: "uncategorised", name: "Uncategorised", icon: "other", color: "#c19a3e", limit: 0, spent: 0, pending: 0, allocation: null });
@@ -42,7 +43,7 @@ export function applyLedger(snapshot: FinanceSnapshot, ledger: LedgerState): Fin
   }
   const budgetCategories = baseBudgets.map((budget) => ({ id: budget.id, name: budget.name, hidden: ledger.categories?.[budget.id]?.hidden ?? false }));
   const budgets = baseBudgets.filter((budget) => !ledger.categories?.[budget.id]?.hidden).map((budget) => {
-    const matching = transactions.filter((item) => item.date.startsWith(month) && item.category === budget.name && !item.isTransfer && item.currency.toLowerCase() === "aud");
+    const matching = transactions.filter((item) => item.date.startsWith(month) && item.category === budget.name && isCashFlowMovement(item));
     return {
       ...budget,
       ...ledger.budgets[budget.id],
@@ -51,7 +52,7 @@ export function applyLedger(snapshot: FinanceSnapshot, ledger: LedgerState): Fin
       pending: -matching.filter((item) => item.status === "pending" && item.amount < 0).reduce((sum, item) => sum + item.amount, 0),
     };
   });
-  const current = transactions.filter((item) => item.date.startsWith(month) && !item.isTransfer && item.currency.toLowerCase() === "aud");
+  const current = transactions.filter((item) => item.date.startsWith(month) && isCashFlowMovement(item));
   const income = current.filter((item) => item.category === "Income" && item.status === "posted").reduce((sum, item) => sum + item.amount, 0);
   const spending = current.filter((item) => item.status === "posted").reduce((sum, item) => sum + expenseContribution(item), 0);
   const saved = income - spending;

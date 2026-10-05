@@ -1,6 +1,6 @@
 import type { PlannedEvent, RecurringItem } from "./ledger-types";
 import type { FinanceTransaction } from "./types";
-import { expenseContribution, monthLabel } from "./history";
+import { expenseContribution, isCashFlowMovement, monthLabel } from "./history";
 
 export function planForecast({ month, asOf, balance, surplus, months, events = [], monthlyChange = 0 }: { month: string; asOf: string; balance: number; surplus: number; months: number; events?: PlannedEvent[]; monthlyChange?: number }) {
   const [year, number] = month.split("-").map(Number);
@@ -31,7 +31,7 @@ export function upcomingPlan(recurring: RecurringItem[], events: PlannedEvent[],
 }
 
 export function reviewSummary(transactions: FinanceTransaction[]) {
-  const external = transactions.filter((item) => !item.isTransfer && item.currency.toLowerCase() === "aud" && item.status === "posted");
+  const external = transactions.filter((item) => isCashFlowMovement(item) && item.status === "posted");
   const outflows = external.filter((item) => item.amount < 0);
   const unclassified = outflows.filter((item) => item.category === "Uncategorised");
   const total = -outflows.reduce((sum, item) => sum + item.amount, 0);
@@ -43,7 +43,7 @@ export function categoryChange(transactions: FinanceTransaction[], month: string
   const [year, number] = month.split("-").map(Number);
   const previousMonth = new Date(Date.UTC(year, number - 2, 1)).toISOString().slice(0, 7);
   const day = cutoffDay;
-  const rows = transactions.filter((item) => !item.isTransfer && item.status === "posted" && item.currency.toLowerCase() === "aud" && (person === "all" || item.person === person));
+  const rows = transactions.filter((item) => isCashFlowMovement(item) && item.status === "posted" && (person === "all" || item.person === person));
   const totals = (period: string) => {
     const result = new Map<string, number>();
     for (const item of rows.filter((item) => item.date.startsWith(period) && Number(item.date.slice(8, 10)) <= day && expenseContribution(item) !== 0)) result.set(item.category, (result.get(item.category) ?? 0) + expenseContribution(item));

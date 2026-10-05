@@ -1,5 +1,6 @@
 import { AccessError, assertSameOrigin, householdAccess } from "@/lib/finance/access";
 import { readLedger, saveLedger } from "@/lib/finance/ledger";
+import { isCashFlowMovement } from "@/lib/finance/history";
 import { validateMutation } from "@/lib/finance/validation";
 
 export const runtime = "nodejs";
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
         const { getFinanceSnapshot } = await import("@/lib/finance/redbark");
         const snapshot = await getFinanceSnapshot();
         const rows = mutation.value.transactionIds.map((id) => snapshot.transactions.find((item) => item.id === id));
-        if (rows.some((item) => !item || item.category !== "Uncategorised" || ledger.corrections[item.id]?.category !== undefined || item.isTransfer || item.status !== "posted" || item.currency.toLowerCase() !== "aud" || (mutation.value.category === "Income" && item.amount <= 0))) throw new AccessError(409, "Some transactions have changed. Refresh and review them again.");
+        if (rows.some((item) => !item || item.category !== "Uncategorised" || ledger.corrections[item.id]?.category !== undefined || !isCashFlowMovement(item) || item.status !== "posted" || item.currency.toLowerCase() !== "aud" || (mutation.value.category === "Income" && item.amount <= 0))) throw new AccessError(409, "Some transactions have changed. Refresh and review them again.");
       }
     }
     await saveLedger(access.scope, access.actor, mutation);

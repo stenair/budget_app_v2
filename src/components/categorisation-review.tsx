@@ -1,4 +1,5 @@
 "use client";
+import { isCashFlowMovement } from "@/lib/finance/history";
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ export function CategorisationReview({ transactions, categories, batches }: { tr
   const { save, pending, message, error } = useLedgerSave();
   const groups = new Map<string, FinanceTransaction[]>();
   for (const item of transactions) {
-    if (item.category !== "Uncategorised" || item.categorySource === "manual" || item.isTransfer || item.status !== "posted" || item.currency.toLowerCase() !== "aud") continue;
+    if (item.category !== "Uncategorised" || item.categorySource === "manual" || !isCashFlowMovement(item) || item.status !== "posted" || item.currency.toLowerCase() !== "aud") continue;
     // Keep incoming and outgoing money separate, using exact merchant text.
     const key = JSON.stringify([item.merchantName ?? item.description, item.amount > 0]);
     groups.set(key, [...(groups.get(key) ?? []), item]);

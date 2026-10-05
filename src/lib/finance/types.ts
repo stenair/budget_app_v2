@@ -22,6 +22,9 @@ export type FinanceTransaction = {
   id: string;
   accountId: string;
   accountName: string;
+  accountType?: FinanceAccount["type"];
+  repayment?: "credit-card" | "mortgage";
+  pairedTransactionId?: string;
   status: "pending" | "posted";
   date: string;
   description: string;

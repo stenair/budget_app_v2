@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowUpRight, CalendarRange, Landmark, Sparkles } from "lucide-react";
+import { ArrowUpRight, CalendarRange, Landmark } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { PageHeading } from "@/components/page-heading";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { planForecast } from "@/lib/finance/planning";
 import type { PlannedEvent } from "@/lib/finance/ledger-types";
+import { InfoButton } from "./info-button";
 import { ForecastChart } from "./forecast-chart";
 
 export function ForecastView({ points, monthlySurplus, ready, transactions, month, plannedIncome, plannedSpending, expensePlan, events, asOf }: { points: ForecastPoint[]; monthlySurplus: number; ready: boolean; transactions: FinanceTransaction[]; month: string; plannedIncome: number; plannedSpending: number; expensePlan: NonNullable<FinanceSnapshot["expensePlan"]>; events: PlannedEvent[]; asOf: string }) {
@@ -50,7 +51,7 @@ export function ForecastView({ points, monthlySurplus, ready, transactions, mont
       <PageHeading
         eyebrow="Forward view"
         title="Forecast"
-        description="Use actual monthly history to inform your plan, then explore income, expenses and extra mortgage payments."
+        description="Explore how your household plan could change your balance."
         action={<select className="h-10 rounded-lg border bg-card px-3 text-sm" aria-label="Forecast horizon" value={months} onChange={(event) => setMonths(Number(event.target.value))}>{[3, 6, 12, 24, 36].map((value) => <option key={value} value={value}>{value} months</option>)}</select>}
       />
       <details className="mb-4 rounded-xl border bg-card"><summary className="cursor-pointer p-4 text-sm font-semibold">Use historical income and expenses as a planning guide</summary><Card className="border-0 shadow-none"><CardHeader><CardTitle className="text-base">Your history as a planning guide</CardTitle><p className="text-xs text-muted-foreground">Past imported monthly averages: income {averageIncome === null ? "unavailable" : formatMoney(averageIncome)} · expenses {averageSpending === null ? "unavailable" : formatMoney(averageSpending)}. Current and first imported months excluded to reduce partial-history bias.</p></CardHeader><CardContent><MonthlyChart rows={history} /><p className="mt-3 text-xs leading-5 text-muted-foreground">Imported months may be incomplete. Irregular income or one-off purchases can distort these averages. Review <Link className="text-primary underline" href="/insights">Insights and its underlying transactions</Link> before using them.</p>{averageIncome !== null && averageSpending !== null ? <Button className="mt-3" variant="outline" size="sm" onClick={() => { setIncomeInput(String(averageIncome / 100)); setExpenseInput(String(Math.max(0, averageSpending) / 100)); setOverride({ income: averageIncome, spending: Math.max(0, averageSpending) }); }}>Try historical averages in this scenario</Button> : null}</CardContent></Card></details>
@@ -59,7 +60,7 @@ export function ForecastView({ points, monthlySurplus, ready, transactions, mont
       <section className="grid gap-4 lg:grid-cols-[1.5fr_0.8fr]">
         <Card className="shadow-xs">
           <CardHeader className="sm:flex-row sm:items-start sm:justify-between">
-            <div><CardTitle className="text-base">Net liquid projection</CardTitle><p className="mt-1 text-xs text-muted-foreground">Offset balance less credit card owing</p></div>
+            <div><div className="flex items-center gap-1"><CardTitle className="text-base">Net liquid projection</CardTitle><InfoButton title="Forecast assumptions"><p>The saved plan uses recurring income, bills and category targets. For each category, it uses the larger of its target and recurring bills to avoid counting the same bill twice.</p><p>Known one-offs are applied once. Points are one month apart from today, not daily bank balances. Changes to interest and tax are excluded.</p><p>Card repayments do not reduce net liquid funds again. Mortgage payments reduce liquid funds; loan-account receipts are not income.</p></InfoButton></div><p className="mt-1 text-xs text-muted-foreground">Offset balance less credit card owing</p></div>
             <div className="text-left sm:text-right"><p className="text-xs text-muted-foreground">In {months} months</p><p className="mt-1 text-2xl font-semibold">{formatMoney(endValue)}</p></div>
           </CardHeader>
           <CardContent>
@@ -76,7 +77,7 @@ export function ForecastView({ points, monthlySurplus, ready, transactions, mont
               <label className="block text-xs font-medium">Expected monthly expenses ($)<Input className="mt-1" type="number" min={0} max={1000000} step="0.01" required value={expenseValue} onChange={(event) => { setExpenseInput(event.target.value); setIncomeInput(incomeValue); setDirty(true); }} /></label>
               {unapplied ? <p className="text-xs font-medium text-amber-700">Inputs changed · press Apply scenario to update the chart.</p> : null}
               <div className="flex flex-wrap gap-2"><Button size="sm" type="submit">Apply scenario</Button><Button size="sm" variant="ghost" type="button" onClick={() => { setDirty(false); setOverride(null); setSpendingChange(0); setExtraMortgage(0); setIncomeInput(String(plannedIncome / 100)); setExpenseInput(String(plannedSpending / 100)); }}>Use saved plan</Button></div>
-              <p className="text-[11px] leading-5 text-muted-foreground">{override ? "Using temporary scenario inputs." : "Using your saved recurring income, bills and budgets."} Use saved plan to reset the inputs and both sliders. Scenario inputs are not saved; update the schedule or budgets below for your ongoing plan.</p>
+              <p className="text-[11px] leading-5 text-muted-foreground">{override ? "Temporary scenario · not saved." : "Using your saved household plan."} Reset restores inputs and sliders.</p>
               <details className="rounded-lg border p-3"><summary className="cursor-pointer text-xs font-medium">Where saved expenses come from: {formatMoney(plannedSpending)}</summary><p className="mt-2 text-xs leading-5 text-muted-foreground">For each category, Harbour uses the larger of its budget target and monthly recurring bills. The total includes category budgets even when no bill is scheduled. Change these targets in Budgets.</p><div className="mt-3 space-y-2">{expensePlan.filter((item) => item.total > 0).map((item) => <div key={item.category} className="flex justify-between gap-3 text-xs"><div><p className="font-medium">{item.category}</p><p className="text-muted-foreground">Budget {formatMoney(item.budget)} · bills {formatMoney(item.recurring)}</p></div><span className="shrink-0 font-semibold">{formatMoney(item.total)}</span></div>)}</div><Link href="/budgets" className="mt-3 inline-block text-xs text-primary underline">Review budget targets</Link></details>
             </form>
             <ScenarioSlider label="Extra household spending" value={spendingChange} min={-1000} max={2000} step={50} onChange={setSpendingChange} helper="Use a negative amount for monthly savings." />
@@ -96,12 +97,7 @@ export function ForecastView({ points, monthlySurplus, ready, transactions, mont
         <ForecastStat icon={<Landmark />} label={`Baseline in ${months} months`} value={formatMoney(baselineEnd)} />
       </section>
 
-      <Card className="mt-4 border-primary/15 bg-secondary/60 shadow-xs">
-        <CardContent className="flex items-start gap-3 p-5">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-background text-primary"><Sparkles className="size-4" /></span>
-          <div><p className="text-sm font-semibold">Planning note</p><p className="mt-1 text-sm leading-6 text-muted-foreground">The baseline uses your monthly salary schedule, regular bills and category budgets. It projects net liquid funds, with interest and tax changes excluded. Known one-offs are included once on their planned dates. The first point is today’s balance; later points are one month apart on the same day (or month end), not daily bank balances. Card repayments move funds between your accounts and do not reduce net liquid funds again.</p></div>
-        </CardContent>
-      </Card>
+
     </div>
   );
 }
