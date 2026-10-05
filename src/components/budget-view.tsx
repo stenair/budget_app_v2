@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CircleDollarSign, Pencil, PiggyBank, WalletCards } from "lucide-react";
+import { CircleDollarSign, History, Pencil, PiggyBank, WalletCards } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -89,11 +89,12 @@ export function BudgetView({ initialBudgets, mode, transactions, month, category
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <Link className="text-sm font-semibold text-primary hover:underline" href={activityLink({month, category:budget.name,person,flow:"spending"})}>{budget.name} →</Link>
-                        <button className="mt-1 text-xs text-primary hover:underline" onClick={() => { setHistoryCategory(budget.name); setHistoryOpen(true); requestAnimationFrame(() => document.getElementById("budget-history")?.scrollIntoView({ behavior: "smooth", block: "start" })); }}>Compare previous months ↑</button>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {formatMoney(person === "all" ? budget.spent : categoryRows.filter((item) => item.status === "posted").reduce((sum,item) => sum + expenseContribution(item),0))} posted{categoryRows.some((item) => item.status === "pending") ? ` · ${formatMoney(categoryRows.filter((item) => item.status === "pending").reduce((sum,item) => sum + expenseContribution(item),0))} pending` : ""}{person !== "all" ? ` · ${budget.allocation && ["Stefan","Partner"].includes(person) ? "individual allocation" : "household target"} ${formatMoney(displayLimit)}` : ""}
                         </p>
                       </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs" aria-label={`Spending history for ${budget.name}`} onClick={() => { setHistoryCategory(budget.name); setHistoryOpen(true); requestAnimationFrame(() => document.getElementById("budget-history")?.scrollIntoView({ behavior: "smooth", block: "start" })); }}><History className="size-3.5" />History</Button>
                       {editing === budget.id ? (
                         <LimitEditor value={budget.limit / 100} share={budget.allocation?.stefan} pending={pending} onSave={(value, share) => saveLimit(budget, value, share)} onCancel={() => setEditing(null)} />
                       ) : (
@@ -101,6 +102,7 @@ export function BudgetView({ initialBudgets, mode, transactions, month, category
                           <Pencil className="size-3" /> {formatMoney(budget.limit)}
                         </Button>
                       )}
+                      </div>
                       {manage ? <Button variant="ghost" size="sm" disabled={pending} onClick={() => save({ kind: "category", id: budget.id, value: { name: budget.name, hidden: true } })}>Hide budget</Button> : null}
                     </div>
                     <Progress value={Math.min(percentage, 100)} className="mt-3 h-2" />

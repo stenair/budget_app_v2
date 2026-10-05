@@ -6,6 +6,8 @@ import { Suspense } from "react";
 import DashboardLoading from "./loading";
 import { HouseholdProvider } from "@/components/household-context";
 
+export const maxDuration = 120;
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<div className="mx-auto max-w-7xl p-6"><DashboardLoading /></div>}><AuthorizedDashboard>{children}</AuthorizedDashboard></Suspense>;
 }

@@ -158,3 +158,56 @@ export async function patchRecord(scope: string, key: string, patch: Record<stri
     await client.query("COMMIT");
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
 }
+
+
+const bankWrites = new Map<string, Promise<unknown>>();
+export async function readBankCache(scope: string): Promise<import("./bank-refresh").BankCache> {
+  const rows = await readRecords<unknown>(scope, "snapshot:");
+  return { snapshot: rows.find((row) => row.key === "snapshot:current")?.value as import("./types").FinanceSnapshot | undefined, refresh: rows.find((row) => row.key === "snapshot:refresh")?.value as import("./bank-refresh").BankRefreshState | undefined };
+}
+
+export async function transactBankCache<T>(scope: string, update: (cache: import("./bank-refresh").BankCache, now: number) => import("./bank-refresh").CacheChange<T>): Promise<T> {
+  const db = await database();
+  const keys = { snapshot: "snapshot:current", refresh: "snapshot:refresh" } as const;
+  if (!db) {
+    const previous = bankWrites.get(scope) ?? Promise.resolve();
+    const work = previous.catch(() => {}).then(async () => {
+      const change = update(await readBankCache(scope), Date.now());
+      const dir = directory(scope);
+      await mkdir(dir, { recursive: true });
+      for (const [name, value] of Object.entries(change.changes ?? {})) {
+        const key = keys[name as keyof typeof keys];
+        const payload = await encode(scope, key, value);
+        const filename = path.join(dir, `${createHash("sha256").update(key).digest("hex")}.json`);
+        const temporary = `${filename}.${randomUUID()}.tmp`;
+        await writeFile(temporary, JSON.stringify({ key, payload }), { mode: 0o600 });
+        await rename(temporary, filename);
+      }
+      return change.result;
+    });
+    bankWrites.set(scope, work);
+    try { return await work; } finally { if (bankWrites.get(scope) === work) bankWrites.delete(scope); }
+  }
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SET LOCAL lock_timeout = '5s'");
+    await client.query("SET LOCAL statement_timeout = '5s'");
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`${scope}:bank-refresh`]);
+    const rows = await client.query("SELECT key,payload FROM harbour_records WHERE scope=$1 AND key=ANY($2::text[]) FOR UPDATE", [scope, Object.values(keys)]);
+    const cache: import("./bank-refresh").BankCache = {};
+    for (const row of rows.rows) {
+      if (row.key === keys.snapshot) cache.snapshot = await decode(scope, row.key, row.payload);
+      if (row.key === keys.refresh) cache.refresh = await decode(scope, row.key, row.payload);
+    }
+    const clock = await client.query("SELECT extract(epoch FROM clock_timestamp()) * 1000 AS now");
+    const change = update(cache, Number(clock.rows[0].now));
+    for (const [name, value] of Object.entries(change.changes ?? {})) {
+      const key = keys[name as keyof typeof keys];
+      const payload = await encode(scope, key, value);
+      await client.query("INSERT INTO harbour_records(scope,key,payload) VALUES($1,$2,$3) ON CONFLICT(scope,key) DO UPDATE SET payload=excluded.payload,updated_at=now()", [scope,key,payload]);
+    }
+    await client.query("COMMIT");
+    return change.result;
+  } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+}
